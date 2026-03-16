@@ -3,6 +3,7 @@ export type RootStackParamList = {
   Category: { categoryId: string; categoryName: string };
   Country: { countryCode: string; countryName: string };
   Favorites: undefined;
+  RecentlyWatched: undefined;
   Search: undefined;
   Settings: undefined;
   AddStream: undefined;

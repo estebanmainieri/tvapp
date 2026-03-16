@@ -31,7 +31,7 @@ export function ContentRow({
         contentContainerStyle={styles.listContent}
       >
         {channels.map((channel, index) => (
-          <View key={channel.id} style={styles.cardWrapper}>
+          <View key={`${title}-${channel.id}`} style={styles.cardWrapper}>
             <ChannelCard
               channel={channel}
               onPress={() => onChannelPress(channel, index)}

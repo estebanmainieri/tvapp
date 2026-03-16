@@ -7,10 +7,10 @@ export function useGeoLocation() {
   useEffect(() => {
     if (initialized) return;
 
-    fetch('https://ipapi.co/json/')
+    fetch('https://api.country.is/')
       .then(res => res.json())
       .then(data => {
-        const countryCode = (data.country_code || 'US').toUpperCase();
+        const countryCode = (data.country || 'US').toUpperCase();
         console.log(`[Geo] Detected country: ${countryCode}`);
         initialize(countryCode);
       })

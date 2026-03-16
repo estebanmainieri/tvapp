@@ -24,7 +24,7 @@ export function PlayerControls({ visible }: PlayerControlsProps) {
   return (
     <View style={styles.overlay}>
       {/* Top bar - channel info */}
-      <View style={styles.topBar} pointerEvents="none">
+      <View style={styles.topBar}>
         {currentChannel.logo && (
           <Image
             source={{ uri: currentChannel.logo }}
@@ -70,7 +70,7 @@ export function PlayerControls({ visible }: PlayerControlsProps) {
       </View>
 
       {/* Bottom bar - status */}
-      <View style={styles.bottomBar} pointerEvents="none">
+      <View style={styles.bottomBar}>
         {isBuffering && (
           <Text style={styles.bufferingText}>Buffering...</Text>
         )}

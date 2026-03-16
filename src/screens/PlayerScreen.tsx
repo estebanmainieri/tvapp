@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import { View, StyleSheet, BackHandler, Platform } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { VideoPlayer } from '../components/player/VideoPlayer';
@@ -81,21 +81,46 @@ export function PlayerScreen() {
   }, [currentChannel?.id]);
 
   // Auto-hide controls
+  const resetControlsTimer = useCallback(() => {
+    if (controlsTimerRef.current) {
+      clearTimeout(controlsTimerRef.current);
+    }
+    controlsTimerRef.current = setTimeout(() => {
+      const state = usePlayerStore.getState();
+      if (state.showControls && !state.showChannelOverlay) {
+        state.toggleControls();
+      }
+    }, CONTROLS_AUTO_HIDE_MS);
+  }, []);
+
   useEffect(() => {
     if (showControls && !showChannelOverlay) {
-      controlsTimerRef.current = setTimeout(() => {
-        usePlayerStore.getState().toggleControls();
-      }, CONTROLS_AUTO_HIDE_MS);
+      resetControlsTimer();
     }
     return () => {
       if (controlsTimerRef.current) {
         clearTimeout(controlsTimerRef.current);
       }
     };
-  }, [showControls, showChannelOverlay]);
+  }, [showControls, showChannelOverlay, resetControlsTimer]);
 
-  // Handle Android back button
+  // Show controls on mouse move (web)
   useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handleMouseMove = () => {
+      const state = usePlayerStore.getState();
+      if (!state.showControls && !state.showChannelOverlay) {
+        state.toggleControls();
+      }
+      resetControlsTimer();
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, [resetControlsTimer]);
+
+  // Handle Android/TV back button (not supported on web)
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
     const handler = BackHandler.addEventListener('hardwareBackPress', () => {
       if (showChannelOverlay) {
         toggleChannelOverlay();

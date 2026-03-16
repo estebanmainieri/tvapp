@@ -9,6 +9,7 @@ import { FavoritesScreen } from '../screens/FavoritesScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { PlayerScreen } from '../screens/PlayerScreen';
+import { RecentlyWatchedScreen } from '../screens/RecentlyWatchedScreen';
 import { NavBar } from '../components/layout/NavBar';
 import { useGeoLocation } from '../hooks/useGeoLocation';
 import { RootStackParamList } from '../types';
@@ -25,6 +26,7 @@ const linking = {
       Category: 'category/:categoryId',
       Country: 'country/:countryCode',
       Favorites: 'favorites',
+      RecentlyWatched: 'recent',
       Search: 'search',
       Settings: 'settings',
       Player: 'player/:channelId?',
@@ -73,6 +75,14 @@ function FavoritesWithNav() {
   );
 }
 
+function RecentlyWatchedWithNav() {
+  return (
+    <ScreenWithNav>
+      <RecentlyWatchedScreen />
+    </ScreenWithNav>
+  );
+}
+
 function SearchWithNav() {
   return (
     <ScreenWithNav>
@@ -105,6 +115,7 @@ export function Navigation() {
         <Stack.Screen name="Category" component={CategoryWithNav} />
         <Stack.Screen name="Country" component={CountryWithNav} />
         <Stack.Screen name="Favorites" component={FavoritesWithNav} />
+        <Stack.Screen name="RecentlyWatched" component={RecentlyWatchedWithNav} />
         <Stack.Screen name="Search" component={SearchWithNav} />
         <Stack.Screen name="Settings" component={SettingsWithNav} />
         <Stack.Screen

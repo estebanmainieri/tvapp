@@ -2,27 +2,30 @@ import { useQuery } from '@tanstack/react-query';
 import {
   fetchChannels,
   fetchStreams,
-  fetchCategories,
   fetchCountries,
   fetchLanguages,
   buildChannelIndex,
 } from '../services/iptv/iptvApi';
-import { ChannelIndex, IPTVCategory, IPTVCountry, IPTVLanguage } from '../types';
+import { useFilterStore } from './useFilterStore';
+import { ChannelIndex, IPTVCountry, IPTVLanguage } from '../types';
 
 const STALE_TIME = 24 * 60 * 60 * 1000; // 24 hours
 
 export function useIPTVChannels() {
+  const { initialized, selectedCountry } = useFilterStore();
+
   return useQuery<ChannelIndex>({
-    queryKey: ['iptv', 'channels'],
+    queryKey: ['iptv', 'channels', selectedCountry],
     queryFn: async () => {
       const [channels, streams] = await Promise.all([
         fetchChannels(),
         fetchStreams(),
       ]);
-      console.log(`[IPTV] Building index from ${channels.length} channels and ${streams.length} streams...`);
+      console.log(`[IPTV] Building index from ${channels.length} channels and ${streams.length} streams (country: ${selectedCountry})...`);
       try {
-        const index = buildChannelIndex(channels, streams);
-        console.log(`[IPTV] Index built: ${index.all.length} playable channels, ${index.byCategory.size} categories, ${index.byCountry.size} countries`);
+        const countryFilter = selectedCountry !== 'all' ? selectedCountry : undefined;
+        const index = buildChannelIndex(channels, streams, countryFilter);
+        console.log(`[IPTV] Index built: ${index.all.length} playable channels, ${index.byCategory.size} categories`);
         return index;
       } catch (err) {
         console.error('[IPTV] buildChannelIndex failed:', err);
@@ -30,16 +33,8 @@ export function useIPTVChannels() {
       }
     },
     staleTime: STALE_TIME,
-    gcTime: Infinity, // Never garbage collect - we want offline support
-  });
-}
-
-export function useIPTVCategories() {
-  return useQuery<IPTVCategory[]>({
-    queryKey: ['iptv', 'categories'],
-    queryFn: fetchCategories,
-    staleTime: STALE_TIME,
     gcTime: Infinity,
+    enabled: initialized, // Don't fetch until geo is resolved
   });
 }
 

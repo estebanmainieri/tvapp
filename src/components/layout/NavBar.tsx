@@ -12,6 +12,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 const NAV_ITEMS = [
   { key: 'Home', label: 'Home' },
   { key: 'Favorites', label: 'Favorites' },
+  { key: 'RecentlyWatched', label: 'Recent' },
   { key: 'Search', label: 'Search' },
   { key: 'Settings', label: 'Settings' },
 ] as const;

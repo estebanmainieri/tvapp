@@ -44,6 +44,7 @@ export async function fetchLanguages(): Promise<IPTVLanguage[]> {
 export function buildChannelIndex(
   rawChannels: IPTVRawChannel[],
   rawStreams: IPTVRawStream[],
+  countryFilter?: string,
 ): ChannelIndex {
   // Build stream lookup: channel ID -> streams
   const streamsByChannel = new Map<string, IPTVRawStream[]>();
@@ -67,6 +68,7 @@ export function buildChannelIndex(
     if (raw.is_nsfw) continue;
     if (raw.closed) continue;
     if (!raw.name) continue;
+    if (countryFilter && raw.country !== countryFilter) continue;
 
     // Pick best stream (prefer highest quality)
     const bestStream = pickBestStream(streams);
@@ -114,6 +116,7 @@ export function buildChannelIndex(
 
   return { all, byCategory, byCountry, byId };
 }
+
 
 function pickBestStream(streams: IPTVRawStream[]): IPTVRawStream {
   // Prefer streams with quality info, then by quality value

@@ -7,8 +7,6 @@ import { CountryRow } from '../components/home/CountryRow';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorState } from '../components/common/ErrorState';
 import { useIPTVChannels, useIPTVCountries } from '../hooks/useIPTVChannels';
-import { useFavorites } from '../hooks/useFavorites';
-import { useRecentlyWatched } from '../hooks/useRecentlyWatched';
 import { usePlayerStore } from '../hooks/usePlayerStore';
 import { useFilterStore } from '../hooks/useFilterStore';
 import { UnifiedChannel, IPTVCountry, RootStackParamList } from '../types';
@@ -32,19 +30,14 @@ export function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { data: channelIndex, isLoading, error, refetch } = useIPTVChannels();
   const { data: countries } = useIPTVCountries();
-  const { favorites, toggleFavorite } = useFavorites();
-  const { recentlyWatched } = useRecentlyWatched();
   const { selectedCountry, selectedLanguage } = useFilterStore();
 
-  // Filter all channels by selected country and language
+  // Filter by language (country is already filtered in the index)
   const filteredChannels = useMemo(() => {
     if (!channelIndex) return [];
-    return channelIndex.all.filter(ch => {
-      if (selectedCountry !== 'all' && ch.country !== selectedCountry) return false;
-      if (selectedLanguage !== 'all' && ch.language !== selectedLanguage) return false;
-      return true;
-    });
-  }, [channelIndex, selectedCountry, selectedLanguage]);
+    if (selectedLanguage === 'all') return channelIndex.all;
+    return channelIndex.all.filter(ch => ch.language === selectedLanguage);
+  }, [channelIndex, selectedLanguage]);
 
   const handleChannelPress = useCallback(
     (channel: UnifiedChannel, channelList: UnifiedChannel[], index: number) => {
@@ -113,33 +106,22 @@ export function HomeScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {recentlyWatched.length > 0 && (
-          <ContentRow
-            title="Recently Watched"
-            channels={recentlyWatched.slice(0, MAX_CHANNELS_PER_ROW)}
-            onChannelPress={(ch, idx) => handleChannelPress(ch, recentlyWatched, idx)}
-            onChannelLongPress={toggleFavorite}
-          />
-        )}
-
-        {favorites.length > 0 && (
-          <ContentRow
-            title="Favorites"
-            channels={favorites.slice(0, MAX_CHANNELS_PER_ROW)}
-            onChannelPress={(ch, idx) => handleChannelPress(ch, favorites, idx)}
-            onChannelLongPress={toggleFavorite}
-          />
-        )}
-
         {categoryRows.map(cat => (
           <ContentRow
             key={cat.id}
             title={cat.label}
             channels={cat.channels}
             onChannelPress={(ch, idx) => handleChannelPress(ch, cat.channels, idx)}
-            onChannelLongPress={toggleFavorite}
           />
         ))}
+
+        {filteredChannels.length > 0 && (
+          <ContentRow
+            title={`All Channels (${filteredChannels.length})`}
+            channels={filteredChannels}
+            onChannelPress={(ch, idx) => handleChannelPress(ch, filteredChannels, idx)}
+          />
+        )}
 
         {selectedCountry === 'all' && countriesWithChannels.length > 0 && (
           <CountryRow
