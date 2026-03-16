@@ -7,6 +7,7 @@ import {
   UnifiedChannel,
   ChannelIndex,
 } from '../../types';
+import { isMainstreamChannel } from '../../data/mainstream';
 
 const BASE_URL = 'https://iptv-org.github.io/api';
 
@@ -73,6 +74,10 @@ export function buildChannelIndex(
     // Pick best stream (prefer highest quality)
     const bestStream = pickBestStream(streams);
 
+    const isMainstream = isMainstreamChannel(
+      raw.id, raw.country, !!raw.logo, raw.categories,
+    );
+
     const channel: UnifiedChannel = {
       id: raw.id,
       source: 'iptv',
@@ -84,6 +89,8 @@ export function buildChannelIndex(
       streamUrl: bestStream.url,
       quality: bestStream.quality || undefined,
       isLive: true,
+      isMainstream,
+      channelNumber: all.length + 1,
       meta: {
         userAgent: bestStream.user_agent || undefined,
         referrer: bestStream.http_referrer || undefined,

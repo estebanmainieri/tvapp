@@ -11,11 +11,20 @@ interface VideoSource {
   headers?: Record<string, string>;
 }
 
+/** Rewrite external stream URLs through our local CORS proxy */
+function proxyUrl(uri: string): string {
+  if (!uri) return uri;
+  // Already relative or already proxied
+  if (uri.startsWith('/') || uri.startsWith('blob:')) return uri;
+  return `/stream-proxy/${encodeURIComponent(uri)}`;
+}
+
 interface VideoProps {
   source: VideoSource;
   style?: any;
   resizeMode?: 'contain' | 'cover' | 'stretch';
   paused?: boolean;
+  muted?: boolean;
   onLoad?: (data: any) => void;
   onBuffer?: (data: { isBuffering: boolean }) => void;
   onError?: (error: any) => void;
@@ -27,6 +36,7 @@ function Video({
   style,
   resizeMode = 'contain',
   paused,
+  muted,
   onLoad,
   onBuffer,
   onError,
@@ -51,6 +61,8 @@ function Video({
         enableWorker: true,
         lowLatencyMode: true,
         xhrSetup: (xhr) => {
+          // URLs are already rewritten by the proxy's m3u8 rewriter,
+          // so no need to rewrite here. Just set custom headers if any.
           if (source.headers) {
             Object.entries(source.headers).forEach(([key, value]) => {
               try { xhr.setRequestHeader(key, value); } catch (_) {}
@@ -59,7 +71,7 @@ function Video({
         },
       });
 
-      hls.loadSource(source.uri);
+      hls.loadSource(proxyUrl(source.uri));
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -79,7 +91,7 @@ function Video({
       hlsRef.current = hls;
     } else if (isHls && video.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari native HLS
-      video.src = source.uri;
+      video.src = proxyUrl(source.uri);
       video.addEventListener('loadeddata', () => {
         onLoad?.({ duration: 0, naturalSize: {} });
       }, { once: true });
@@ -88,7 +100,7 @@ function Video({
       }
     } else {
       // Direct video (mp4, etc.)
-      video.src = source.uri;
+      video.src = proxyUrl(source.uri);
       video.addEventListener('loadeddata', () => {
         onLoad?.({ duration: 0, naturalSize: {} });
       }, { once: true });
@@ -115,6 +127,12 @@ function Video({
       video.play().catch(() => {});
     }
   }, [paused]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !!muted;
+  }, [muted]);
 
   const objectFit =
     resizeMode === 'contain'

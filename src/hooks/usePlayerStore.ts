@@ -6,6 +6,7 @@ type PlayerStore = PlayerState & PlayerActions;
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
   // State
   isPlaying: false,
+  isMuted: false,
   currentChannel: null,
   channelList: [],
   channelIndex: 0,
@@ -78,6 +79,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set(state => ({ isPlaying: !state.isPlaying }));
   },
 
+  toggleMute: () => {
+    set(state => ({ isMuted: !state.isMuted }));
+  },
+
   reload: () => {
     const { currentChannel } = get();
     if (!currentChannel) return;
@@ -97,6 +102,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       showControls: false,
       showChannelOverlay: false,
       error: null,
+      isMuted: false,
       isBuffering: false,
     });
   },

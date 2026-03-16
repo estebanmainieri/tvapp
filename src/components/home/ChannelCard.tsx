@@ -6,6 +6,7 @@ import { colors, spacing, typography } from '../../theme';
 
 interface ChannelCardProps {
   channel: UnifiedChannel;
+  channelNumber?: number;
   onPress: () => void;
   onLongPress?: () => void;
   hasTVPreferredFocus?: boolean;
@@ -13,6 +14,7 @@ interface ChannelCardProps {
 
 export function ChannelCard({
   channel,
+  channelNumber,
   onPress,
   onLongPress,
   hasTVPreferredFocus,
@@ -33,11 +35,14 @@ export function ChannelCard({
         ) : (
           <View style={styles.placeholderLogo}>
             <Text style={styles.placeholderText}>
-              {(channel.name || '?').charAt(0).toUpperCase()}
+              {channelNumber ?? (channel.name || '?').charAt(0).toUpperCase()}
             </Text>
           </View>
         )}
         <View style={styles.info}>
+          {channelNumber != null && (
+            <Text style={styles.channelNum}>{channelNumber}</Text>
+          )}
           <Text style={styles.name} numberOfLines={1}>
             {channel.name || 'Unknown Channel'}
           </Text>
@@ -83,7 +88,13 @@ const styles = StyleSheet.create({
   info: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+  },
+  channelNum: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontWeight: '700',
+    marginRight: 6,
+    minWidth: 20,
   },
   name: {
     ...typography.caption,

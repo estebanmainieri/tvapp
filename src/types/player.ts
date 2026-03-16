@@ -2,6 +2,7 @@ import { UnifiedChannel } from './channel';
 
 export interface PlayerState {
   isPlaying: boolean;
+  isMuted: boolean;
   currentChannel: UnifiedChannel | null;
   channelList: UnifiedChannel[];
   channelIndex: number;
@@ -24,6 +25,7 @@ export interface PlayerActions {
   setError: (error: string | null) => void;
   setBuffering: (buffering: boolean) => void;
   togglePlay: () => void;
+  toggleMute: () => void;
   reload: () => void;
   stop: () => void;
 }

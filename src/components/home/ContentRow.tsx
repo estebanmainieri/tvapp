@@ -34,6 +34,7 @@ export function ContentRow({
           <View key={`${title}-${channel.id}`} style={styles.cardWrapper}>
             <ChannelCard
               channel={channel}
+              channelNumber={channel.channelNumber}
               onPress={() => onChannelPress(channel, index)}
               onLongPress={() => onChannelLongPress?.(channel)}
               hasTVPreferredFocus={isFirstRow && index === 0}

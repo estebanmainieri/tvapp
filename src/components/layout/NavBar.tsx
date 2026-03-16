@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -11,10 +11,8 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const NAV_ITEMS = [
   { key: 'Home', label: 'Home' },
-  { key: 'Favorites', label: 'Favorites' },
-  { key: 'RecentlyWatched', label: 'Recent' },
-  { key: 'Search', label: 'Search' },
-  { key: 'Settings', label: 'Settings' },
+  { key: 'Guide', label: 'Guide' },
+  { key: 'TVMode', label: 'TV Mode' },
 ] as const;
 
 function SelectPicker({ value, onChange, options }: {
@@ -60,6 +58,7 @@ export function NavBar() {
   const { data: countries } = useIPTVCountries();
   const { data: languages } = useIPTVLanguages();
   const { data: channelIndex } = useIPTVChannels();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const countryOptions = useMemo(() => {
     if (!countries || !channelIndex) return [{ value: 'all', label: 'All Countries' }];
@@ -106,7 +105,8 @@ export function NavBar() {
       <Pressable onPress={() => navigation.navigate('Home')}>
         <Text style={styles.logo}>TVApp</Text>
       </Pressable>
-      <View style={styles.links}>
+
+      <View style={styles.centerNav}>
         {NAV_ITEMS.map(item => {
           const isActive = route.name === item.key;
           return (
@@ -126,9 +126,27 @@ export function NavBar() {
           );
         })}
       </View>
-      <View style={styles.filters}>
-        <SelectPicker value={selectedCountry} onChange={setCountry} options={countryOptions} />
-        <SelectPicker value={selectedLanguage} onChange={setLanguage} options={languageOptions} />
+
+      <View style={styles.rightSection}>
+        <Pressable
+          onPress={() => setSettingsOpen(!settingsOpen)}
+          style={({ pressed }: { pressed: boolean }) => [
+            styles.gearButton,
+            pressed && styles.linkPressed,
+          ]}
+        >
+          <Text style={styles.gearIcon}>{'\u2699'}</Text>
+        </Pressable>
+
+        {settingsOpen && (
+          <View style={styles.settingsDropdown}>
+            <Text style={styles.settingsLabel}>Location</Text>
+            <SelectPicker value={selectedCountry} onChange={setCountry} options={countryOptions} />
+            <View style={styles.settingsSpacer} />
+            <Text style={styles.settingsLabel}>Language</Text>
+            <SelectPicker value={selectedLanguage} onChange={setLanguage} options={languageOptions} />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -138,11 +156,8 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
     paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.surfaceLight,
   },
   logo: {
     ...typography.title,
@@ -150,9 +165,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginRight: spacing.lg,
   },
-  links: {
+  centerNav: {
     flexDirection: 'row',
     flex: 1,
+    justifyContent: 'center',
     gap: spacing.xs,
   },
   link: {
@@ -174,10 +190,40 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontWeight: '600',
   },
-  filters: {
-    flexDirection: 'row',
-    gap: spacing.sm,
+  rightSection: {
     marginLeft: spacing.md,
+    position: 'relative' as any,
+  },
+  gearButton: {
+    padding: spacing.xs,
+    borderRadius: 6,
+  },
+  gearIcon: {
+    fontSize: 22,
+    color: colors.textSecondary,
+  },
+  settingsDropdown: {
+    position: 'absolute' as any,
+    top: 40,
+    right: 0,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.surfaceHighlight,
+    zIndex: 100,
+    minWidth: 200,
+    ...(Platform.OS === 'web' ? { boxShadow: '0 4px 16px rgba(0,0,0,0.5)' } : {}),
+  } as any,
+  settingsLabel: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginBottom: 4,
+    textTransform: 'uppercase' as any,
+    letterSpacing: 1,
+  },
+  settingsSpacer: {
+    height: spacing.sm,
   },
   pickerFallback: {
     ...typography.caption,

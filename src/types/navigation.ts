@@ -1,12 +1,5 @@
 export type RootStackParamList = {
-  Home: undefined;
-  Category: { categoryId: string; categoryName: string };
-  Country: { countryCode: string; countryName: string };
-  Favorites: undefined;
-  RecentlyWatched: undefined;
-  Search: undefined;
-  Settings: undefined;
-  AddStream: undefined;
+  TVMode: undefined;
   Player: { channelId?: string } | undefined;
 };
 

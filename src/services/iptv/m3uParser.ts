@@ -39,6 +39,8 @@ export function parseM3U(content: string, sourceLabel: string): UnifiedChannel[]
       categories: group ? [group] : [],
       streamUrl: url,
       isLive: true,
+      isMainstream: false,
+      channelNumber: channels.length + 1,
     });
   }
 

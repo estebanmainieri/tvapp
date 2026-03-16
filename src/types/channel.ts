@@ -17,6 +17,8 @@ export interface UnifiedChannel {
   streamUrl: string;
   quality?: string;
   isLive: boolean;
+  isMainstream: boolean;
+  channelNumber: number;
   meta?: {
     youtubeChannelId?: string;
     twitchUsername?: string;

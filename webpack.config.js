@@ -1,4 +1,7 @@
 const path = require('path');
+const http = require('http');
+const https = require('https');
+const url = require('url');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
 module.exports = {
@@ -97,6 +100,100 @@ module.exports = {
     open: false,
     historyApiFallback: {
       disableDotRule: true,
+    },
+    setupMiddlewares: (middlewares, devServer) => {
+      // CORS proxy: /stream-proxy/<encoded-url> → fetches the real stream URL
+      // and rewrites m3u8 content so relative URLs also go through the proxy
+      devServer.app.use('/stream-proxy', (req, res) => {
+        const targetUrl = decodeURIComponent(req.url.slice(1)); // remove leading /
+        if (!targetUrl || (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://'))) {
+          res.status(400).send('Invalid target URL');
+          return;
+        }
+
+        const parsed = new URL(targetUrl);
+        const client = parsed.protocol === 'https:' ? https : http;
+
+        const proxyReq = client.get(targetUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (proxyRes) => {
+          // Follow redirects
+          if (proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
+            const redirectUrl = new URL(proxyRes.headers.location, targetUrl).href;
+            res.redirect(`/stream-proxy/${encodeURIComponent(redirectUrl)}`);
+            return;
+          }
+
+          const contentType = proxyRes.headers['content-type'] || '';
+          const isM3U8 = targetUrl.includes('.m3u8') || targetUrl.includes('m3u') ||
+            contentType.includes('mpegurl') || contentType.includes('m3u');
+
+          // Set CORS headers
+          res.set('Access-Control-Allow-Origin', '*');
+          res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
+          if (isM3U8) {
+            // Buffer m3u8 response and rewrite URLs
+            const chunks = [];
+            proxyRes.on('data', chunk => chunks.push(chunk));
+            proxyRes.on('end', () => {
+              let body = Buffer.concat(chunks).toString('utf-8');
+              const baseUrl = targetUrl.substring(0, targetUrl.lastIndexOf('/') + 1);
+
+              // Rewrite URLs in the m3u8: absolute and relative
+              body = body.replace(/^((?!#).+\.(?:m3u8|ts|aac|mp4|fmp4|cmfv|cmfa|vtt|key).*)$/gm, (match) => {
+                const line = match.trim();
+                let absoluteUrl;
+                if (line.startsWith('http://') || line.startsWith('https://')) {
+                  absoluteUrl = line;
+                } else if (line.startsWith('/')) {
+                  absoluteUrl = `${parsed.protocol}//${parsed.host}${line}`;
+                } else {
+                  absoluteUrl = baseUrl + line;
+                }
+                return `/stream-proxy/${encodeURIComponent(absoluteUrl)}`;
+              });
+
+              // Also rewrite URI= values (e.g. for encryption keys)
+              body = body.replace(/URI="([^"]+)"/g, (match, uri) => {
+                let absoluteUrl;
+                if (uri.startsWith('http://') || uri.startsWith('https://')) {
+                  absoluteUrl = uri;
+                } else if (uri.startsWith('/')) {
+                  absoluteUrl = `${parsed.protocol}//${parsed.host}${uri}`;
+                } else {
+                  absoluteUrl = baseUrl + uri;
+                }
+                return `URI="/stream-proxy/${encodeURIComponent(absoluteUrl)}"`;
+              });
+
+              res.set('Content-Type', 'application/vnd.apple.mpegurl');
+              res.send(body);
+            });
+          } else {
+            // Binary content (ts segments, etc) — pipe directly
+            Object.entries(proxyRes.headers).forEach(([key, value]) => {
+              if (key !== 'transfer-encoding') res.set(key, value);
+            });
+            res.set('Access-Control-Allow-Origin', '*');
+            proxyRes.pipe(res);
+          }
+        });
+
+        proxyReq.on('error', (err) => {
+          console.error('[stream-proxy] Error:', err.message, targetUrl);
+          if (!res.headersSent) {
+            res.status(502).send('Proxy error: ' + err.message);
+          }
+        });
+
+        proxyReq.setTimeout(10000, () => {
+          proxyReq.destroy();
+          if (!res.headersSent) {
+            res.status(504).send('Proxy timeout');
+          }
+        });
+      });
+
+      return middlewares;
     },
   },
   devtool: 'source-map',

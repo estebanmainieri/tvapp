@@ -3,7 +3,11 @@ import { getItem, setItem, KEYS } from './storage';
 export interface AppSettings {
   preferredCountry?: string;
   preferredLanguage?: string;
+  uiLanguage?: string;
   lastDataRefresh?: number;
+  showFavoritesOnly?: boolean;
+  showMainstreamOnly?: boolean;
+  sidebarVisible?: boolean;
 }
 
 export async function getSettings(): Promise<AppSettings> {

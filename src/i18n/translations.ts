@@ -1,0 +1,111 @@
+const translations: Record<string, Record<string, string>> = {
+  es: {
+    settings: 'Configuración',
+    language: 'Idioma',
+    clearCache: 'Borrar caché',
+    clearCacheConfirm: '¿Borrar todos los datos locales?',
+    clearCacheDone: 'Caché borrado',
+    version: 'Versión',
+    contact: 'Contacto',
+    channels: 'Canales',
+    favorites: 'Favoritos',
+    popular: 'Popular',
+    selectChannel: 'Seleccioná un canal',
+    buffering: 'Cargando...',
+    loading: 'Cargando canales...',
+    loadError: 'Error al cargar canales.',
+  },
+  en: {
+    settings: 'Settings',
+    language: 'Language',
+    clearCache: 'Clear cache',
+    clearCacheConfirm: 'Clear all local data?',
+    clearCacheDone: 'Cache cleared',
+    version: 'Version',
+    contact: 'Contact',
+    channels: 'Channels',
+    favorites: 'Favorites',
+    popular: 'Popular',
+    selectChannel: 'Select a channel',
+    buffering: 'Buffering...',
+    loading: 'Loading channels...',
+    loadError: 'Failed to load channels.',
+  },
+  pt: {
+    settings: 'Configurações',
+    language: 'Idioma',
+    clearCache: 'Limpar cache',
+    clearCacheConfirm: 'Limpar todos os dados locais?',
+    clearCacheDone: 'Cache limpo',
+    version: 'Versão',
+    contact: 'Contato',
+    channels: 'Canais',
+    favorites: 'Favoritos',
+    popular: 'Popular',
+    selectChannel: 'Selecione um canal',
+    buffering: 'Carregando...',
+    loading: 'Carregando canais...',
+    loadError: 'Erro ao carregar canais.',
+  },
+  fr: {
+    settings: 'Paramètres',
+    language: 'Langue',
+    clearCache: 'Vider le cache',
+    clearCacheConfirm: 'Supprimer toutes les données locales ?',
+    clearCacheDone: 'Cache vidé',
+    version: 'Version',
+    contact: 'Contact',
+    channels: 'Chaînes',
+    favorites: 'Favoris',
+    popular: 'Populaire',
+    selectChannel: 'Sélectionnez une chaîne',
+    buffering: 'Chargement...',
+    loading: 'Chargement des chaînes...',
+    loadError: 'Échec du chargement des chaînes.',
+  },
+  de: {
+    settings: 'Einstellungen',
+    language: 'Sprache',
+    clearCache: 'Cache leeren',
+    clearCacheConfirm: 'Alle lokalen Daten löschen?',
+    clearCacheDone: 'Cache gelöscht',
+    version: 'Version',
+    contact: 'Kontakt',
+    channels: 'Kanäle',
+    favorites: 'Favoriten',
+    popular: 'Beliebt',
+    selectChannel: 'Kanal auswählen',
+    buffering: 'Laden...',
+    loading: 'Kanäle werden geladen...',
+    loadError: 'Kanäle konnten nicht geladen werden.',
+  },
+};
+
+/** Map country code → default UI language */
+const COUNTRY_TO_LANG: Record<string, string> = {
+  AR: 'es', UY: 'es', PY: 'es', BO: 'es', CL: 'es', PE: 'es',
+  CO: 'es', VE: 'es', EC: 'es', MX: 'es', CR: 'es', PA: 'es',
+  ES: 'es', CU: 'es', DO: 'es', GT: 'es', HN: 'es', SV: 'es',
+  NI: 'es', PR: 'es',
+  BR: 'pt', PT: 'pt', AO: 'pt', MZ: 'pt',
+  FR: 'fr', BE: 'fr', CH: 'fr', CA: 'fr',
+  DE: 'de', AT: 'de',
+  US: 'en', GB: 'en', AU: 'en', NZ: 'en', IE: 'en', ZA: 'en',
+  IN: 'en', PH: 'en', NG: 'en', KE: 'en',
+};
+
+export function getDefaultLangForCountry(country: string): string {
+  return COUNTRY_TO_LANG[country] ?? 'en';
+}
+
+export function t(lang: string, key: string): string {
+  return translations[lang]?.[key] ?? translations.en[key] ?? key;
+}
+
+export const UI_LANGUAGES = [
+  { value: 'es', label: 'Español' },
+  { value: 'en', label: 'English' },
+  { value: 'pt', label: 'Português' },
+  { value: 'fr', label: 'Français' },
+  { value: 'de', label: 'Deutsch' },
+];

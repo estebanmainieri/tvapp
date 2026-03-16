@@ -6,7 +6,7 @@ import { colors } from '../../theme';
 
 export function VideoPlayer() {
   const videoRef = useRef<any>(null);
-  const { currentChannel, isPlaying, setBuffering, setError } = usePlayerStore();
+  const { currentChannel, isPlaying, isMuted, setBuffering, setError } = usePlayerStore();
 
   const handleLoad = useCallback(
     (_data: OnLoadData) => {
@@ -51,6 +51,7 @@ export function VideoPlayer() {
         style={styles.video}
         resizeMode="contain"
         paused={!isPlaying}
+        muted={isMuted}
         onLoad={handleLoad}
         onBuffer={handleBuffer}
         onError={handleError}

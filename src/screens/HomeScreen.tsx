@@ -1,43 +1,24 @@
-import React, { useCallback, useMemo } from 'react';
-import { ScrollView, View, StyleSheet } from 'react-native';
+import React, { useCallback } from 'react';
+import { ScrollView, View, Text, Image, Pressable, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { ContentRow } from '../components/home/ContentRow';
-import { CountryRow } from '../components/home/CountryRow';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorState } from '../components/common/ErrorState';
-import { useIPTVChannels, useIPTVCountries } from '../hooks/useIPTVChannels';
+import { useIPTVChannels } from '../hooks/useIPTVChannels';
 import { usePlayerStore } from '../hooks/usePlayerStore';
-import { useFilterStore } from '../hooks/useFilterStore';
-import { UnifiedChannel, IPTVCountry, RootStackParamList } from '../types';
-import { colors, spacing } from '../theme';
+import { useFavorites } from '../hooks/useFavorites';
+import { useRecentlyWatched } from '../hooks/useRecentlyWatched';
+import { UnifiedChannel, RootStackParamList } from '../types';
+import { colors, spacing, typography } from '../theme';
+import { SectionHeader } from '../components/home/SectionHeader';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-const FEATURED_CATEGORIES = [
-  { id: 'news', label: 'News' },
-  { id: 'sports', label: 'Sports' },
-  { id: 'entertainment', label: 'Entertainment' },
-  { id: 'movies', label: 'Movies' },
-  { id: 'music', label: 'Music' },
-  { id: 'kids', label: 'Kids' },
-  { id: 'documentary', label: 'Documentary' },
-];
-
-const MAX_CHANNELS_PER_ROW = 30;
 
 export function HomeScreen() {
   const navigation = useNavigation<NavigationProp>();
   const { data: channelIndex, isLoading, error, refetch } = useIPTVChannels();
-  const { data: countries } = useIPTVCountries();
-  const { selectedCountry, selectedLanguage } = useFilterStore();
-
-  // Filter by language (country is already filtered in the index)
-  const filteredChannels = useMemo(() => {
-    if (!channelIndex) return [];
-    if (selectedLanguage === 'all') return channelIndex.all;
-    return channelIndex.all.filter(ch => ch.language === selectedLanguage);
-  }, [channelIndex, selectedLanguage]);
+  const { favorites, toggleFavorite, isFavorite } = useFavorites();
+  const { recentlyWatched } = useRecentlyWatched();
 
   const handleChannelPress = useCallback(
     (channel: UnifiedChannel, channelList: UnifiedChannel[], index: number) => {
@@ -46,45 +27,6 @@ export function HomeScreen() {
     },
     [navigation],
   );
-
-  const handleCountryPress = useCallback(
-    (country: IPTVCountry) => {
-      navigation.navigate('Country', {
-        countryCode: country.code,
-        countryName: country.name,
-      });
-    },
-    [navigation],
-  );
-
-  const categoryRows = useMemo(() => {
-    if (filteredChannels.length === 0) return [];
-    // Build category buckets from filtered channels
-    const byCat = new Map<string, UnifiedChannel[]>();
-    for (const ch of filteredChannels) {
-      for (const cat of ch.categories) {
-        const list = byCat.get(cat);
-        if (list) list.push(ch);
-        else byCat.set(cat, [ch]);
-      }
-    }
-    return FEATURED_CATEGORIES.map(cat => ({
-      ...cat,
-      channels: byCat.get(cat.id)?.slice(0, MAX_CHANNELS_PER_ROW) ?? [],
-    })).filter(cat => cat.channels.length > 0);
-  }, [filteredChannels]);
-
-  const { countriesWithChannels, countryCounts } = useMemo(() => {
-    if (!channelIndex || !countries) return { countriesWithChannels: [], countryCounts: new Map<string, number>() };
-    const filtered = countries.filter(c => channelIndex.byCountry.has(c.code));
-    const counts = new Map<string, number>();
-    for (const c of filtered) {
-      const chans = channelIndex.byCountry.get(c.code);
-      if (chans) counts.set(c.code, chans.length);
-    }
-    filtered.sort((a, b) => (counts.get(b.code) ?? 0) - (counts.get(a.code) ?? 0));
-    return { countriesWithChannels: filtered.slice(0, 50), countryCounts: counts };
-  }, [channelIndex, countries]);
 
   if (isLoading && !channelIndex) {
     return <LoadingSpinner message="Loading channels..." fullScreen />;
@@ -99,6 +41,8 @@ export function HomeScreen() {
     );
   }
 
+  const recent5 = recentlyWatched.slice(0, 5);
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -106,29 +50,94 @@ export function HomeScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {categoryRows.map(cat => (
-          <ContentRow
-            key={cat.id}
-            title={cat.label}
-            channels={cat.channels}
-            onChannelPress={(ch, idx) => handleChannelPress(ch, cat.channels, idx)}
-          />
-        ))}
-
-        {filteredChannels.length > 0 && (
-          <ContentRow
-            title={`All Channels (${filteredChannels.length})`}
-            channels={filteredChannels}
-            onChannelPress={(ch, idx) => handleChannelPress(ch, filteredChannels, idx)}
-          />
+        {/* Recently Watched — 5 items, full width, no scroll */}
+        {recent5.length > 0 && (
+          <View style={styles.section}>
+            <SectionHeader title="Recently Watched" channelCount={recent5.length} />
+            <View style={styles.recentRow}>
+              {recent5.map((ch) => (
+                <Pressable
+                  key={ch.id}
+                  onPress={() => handleChannelPress(ch, recentlyWatched, recentlyWatched.indexOf(ch))}
+                  style={({ pressed }) => [
+                    styles.recentCard,
+                    pressed && styles.cardPressed,
+                  ]}
+                >
+                  {ch.logo ? (
+                    <Image source={{ uri: ch.logo }} style={styles.recentLogo} resizeMode="contain" />
+                  ) : (
+                    <View style={[styles.recentLogo, styles.recentLogoPlaceholder]}>
+                      <Text style={styles.placeholderText}>{ch.channelNumber}</Text>
+                    </View>
+                  )}
+                  <View style={styles.recentInfo}>
+                    <Text style={styles.recentNumber}>{ch.channelNumber}</Text>
+                    <Text style={styles.recentName} numberOfLines={1}>{ch.name || 'Unknown'}</Text>
+                  </View>
+                  <Pressable
+                    onPress={(e) => { e.stopPropagation?.(); toggleFavorite(ch); }}
+                    style={styles.starButton}
+                    hitSlop={8}
+                  >
+                    <Text style={[styles.starIcon, isFavorite(ch.id) && styles.starActive]}>
+                      {isFavorite(ch.id) ? '\u2605' : '\u2606'}
+                    </Text>
+                  </Pressable>
+                </Pressable>
+              ))}
+            </View>
+          </View>
         )}
 
-        {selectedCountry === 'all' && countriesWithChannels.length > 0 && (
-          <CountryRow
-            countries={countriesWithChannels}
-            countryCounts={countryCounts}
-            onCountryPress={handleCountryPress}
-          />
+        {/* Favorites — grid */}
+        {favorites.length > 0 && (
+          <View style={styles.section}>
+            <SectionHeader title="Favorites" channelCount={favorites.length} />
+            <View style={styles.favGrid}>
+              {favorites.map((ch) => (
+                <View key={ch.id} style={styles.favCardWrapper}>
+                  <Pressable
+                    onPress={() => handleChannelPress(ch, favorites, favorites.indexOf(ch))}
+                    style={({ pressed }) => [
+                      styles.favCard,
+                      pressed && styles.cardPressed,
+                    ]}
+                  >
+                    {ch.logo ? (
+                      <Image source={{ uri: ch.logo }} style={styles.favLogo} resizeMode="contain" />
+                    ) : (
+                      <View style={[styles.favLogo, styles.favLogoPlaceholder]}>
+                        <Text style={styles.placeholderText}>{ch.channelNumber}</Text>
+                      </View>
+                    )}
+                    <View style={styles.favInfo}>
+                      <Text style={styles.favNumber}>{ch.channelNumber}</Text>
+                      <Text style={styles.favName} numberOfLines={1}>{ch.name || 'Unknown'}</Text>
+                    </View>
+                    <Pressable
+                      onPress={(e) => { e.stopPropagation?.(); toggleFavorite(ch); }}
+                      style={styles.starButton}
+                      hitSlop={8}
+                    >
+                      <Text style={[styles.starIcon, styles.starActive]}>{'\u2605'}</Text>
+                    </Pressable>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Empty state */}
+        {recent5.length === 0 && favorites.length === 0 && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyTitle}>Welcome to TVApp</Text>
+            <Text style={styles.emptyText}>
+              Go to Guide or TV Mode to start watching channels.{'\n'}
+              Channels you watch will appear here.
+            </Text>
+          </View>
         )}
       </ScrollView>
     </View>
@@ -145,7 +154,133 @@ const styles = StyleSheet.create({
     overflow: 'scroll',
   } as any,
   content: {
-    paddingTop: spacing.lg,
+    paddingTop: spacing.md,
     paddingBottom: spacing.xxl,
+  },
+  section: {
+    marginBottom: spacing.lg,
+  },
+
+  // Recently Watched
+  recentRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.screenHorizontal,
+    gap: spacing.cardGap,
+  },
+  recentCard: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  recentLogo: {
+    width: '100%',
+    height: 80,
+    backgroundColor: colors.surfaceLight,
+  },
+  recentLogoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recentInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.sm,
+    paddingRight: 32,
+  },
+  recentNumber: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontWeight: '700',
+    marginRight: 6,
+    minWidth: 20,
+  },
+  recentName: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+
+  // Favorites grid
+  favGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing.screenHorizontal,
+    gap: spacing.cardGap,
+  },
+  favCardWrapper: {
+    width: spacing.cardWidth,
+  },
+  favCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  favLogo: {
+    width: '100%',
+    height: spacing.cardHeight - 36,
+    backgroundColor: colors.surfaceLight,
+  },
+  favLogoPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  favInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.sm,
+    paddingRight: 32,
+  },
+  favNumber: {
+    ...typography.caption,
+    color: colors.textMuted,
+    fontWeight: '700',
+    marginRight: 6,
+    minWidth: 20,
+  },
+  favName: {
+    ...typography.caption,
+    color: colors.textPrimary,
+    flex: 1,
+  },
+
+  // Shared
+  cardPressed: {
+    opacity: 0.7,
+  },
+  placeholderText: {
+    ...typography.title,
+    color: colors.textMuted,
+  },
+  starButton: {
+    position: 'absolute',
+    bottom: spacing.sm,
+    right: spacing.sm,
+  },
+  starIcon: {
+    fontSize: 18,
+    color: colors.textMuted,
+  },
+  starActive: {
+    color: colors.focusBorder, // gold
+  },
+
+  // Empty state
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 100,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyTitle: {
+    ...typography.title,
+    color: colors.textPrimary,
+    marginBottom: spacing.md,
+  },
+  emptyText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });
