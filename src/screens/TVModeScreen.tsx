@@ -13,6 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing, typography } from '../theme';
 import { APP_VERSION } from '../version';
 import { t, UI_LANGUAGES } from '../i18n/translations';
+import { checkForUpdate, applyUpdate, startBackgroundUpdateCheck, stopBackgroundUpdateCheck, UpdateInfo } from '../services/updater';
 import {
   PlayIcon, PauseIcon, VolumeOnIcon, VolumeMuteIcon,
   ReloadIcon, FullscreenIcon, FullscreenExitIcon,
@@ -71,6 +72,20 @@ export function TVModeScreen() {
   const [channelOsd, setChannelOsd] = useState<string | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cacheCleared, setCacheCleared] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateApplying, setUpdateApplying] = useState(false);
+
+  // Focus zones for D-pad navigation: channels > star > controls
+  const [focusZone, setFocusZone] = useState<'channels' | 'star' | 'controls' | 'toolbar'>('channels');
+  const [highlightedIdx, setHighlightedIdx] = useState(-1);
+  const [controlFocusIdx, setControlFocusIdx] = useState(0);
+
+  // Background update check
+  useEffect(() => {
+    startBackgroundUpdateCheck((info) => setUpdateInfo(info));
+    return () => stopBackgroundUpdateCheck();
+  }, []);
 
   const {
     currentChannel,
@@ -134,17 +149,113 @@ export function TVModeScreen() {
     [channels, play],
   );
 
-  // TV remote handlers
+  // Control buttons in order for D-pad navigation
+  // Left: prev, play/pause, next, mute | Right: fav, reload, fullscreen
+  const controlActions = useMemo(() => [
+    { id: 'prev', action: () => { const idx = channels.indexOf(currentChannel!); if (idx > 0) { play(channels[idx - 1], channels, idx - 1); } } },
+    { id: 'playpause', action: togglePlay },
+    { id: 'next', action: () => { const idx = channels.indexOf(currentChannel!); if (idx < channels.length - 1) { play(channels[idx + 1], channels, idx + 1); } } },
+    { id: 'mute', action: toggleMute },
+    { id: 'fav', action: () => { if (currentChannel) toggleFavorite(currentChannel); } },
+    { id: 'reload', action: reload },
+    { id: 'fullscreen', action: toggleSidebar },
+  ], [channels, currentChannel, play, togglePlay, toggleMute, toggleFavorite, reload, toggleSidebar]);
+
+  // TV remote handlers — D-pad navigation with focus zones
   const remoteHandlers = useMemo(
     () => ({
-      onUp: () => channelUp(),
-      onDown: () => channelDown(),
-      onSelect: () => {},
+      // Down arrow = move UP in channel list (higher index = next channel)
+      onDown: () => {
+        if (focusZone === 'channels') {
+          if (sidebarVisible) {
+            setHighlightedIdx(prev => Math.min(prev + 1, channels.length - 1));
+          } else {
+            // Fullscreen: zap down and play immediately
+            channelDown();
+          }
+        } else if (focusZone === 'toolbar') {
+          setFocusZone('channels');
+          setHighlightedIdx(0);
+        }
+      },
+      // Up arrow = move DOWN in channel list (lower index = prev channel)
+      onUp: () => {
+        if (focusZone === 'channels') {
+          if (sidebarVisible) {
+            if (highlightedIdx <= 0) {
+              setFocusZone('toolbar');
+              setHighlightedIdx(-1);
+            } else {
+              setHighlightedIdx(prev => prev - 1);
+            }
+          } else {
+            // Fullscreen: zap up and play immediately
+            channelUp();
+          }
+        } else if (focusZone === 'controls') {
+          setFocusZone('channels');
+        }
+      },
+      // Right = channels → star → controls
+      onRight: () => {
+        if (focusZone === 'channels' && sidebarVisible) {
+          setFocusZone('star');
+        } else if (focusZone === 'star') {
+          setFocusZone('controls');
+          setControlFocusIdx(0);
+        } else if (focusZone === 'controls') {
+          setControlFocusIdx(prev => Math.min(prev + 1, controlActions.length - 1));
+        }
+      },
+      // Left = controls → star → channels
+      onLeft: () => {
+        if (focusZone === 'controls') {
+          if (controlFocusIdx > 0) {
+            setControlFocusIdx(prev => prev - 1);
+          } else {
+            setFocusZone('star');
+          }
+        } else if (focusZone === 'star') {
+          setFocusZone('channels');
+        } else if (!sidebarVisible) {
+          toggleSidebar();
+          setFocusZone('channels');
+        }
+      },
+      // Select/Enter = confirm action
+      onSelect: () => {
+        if (focusZone === 'channels' && highlightedIdx >= 0 && highlightedIdx < channels.length) {
+          play(channels[highlightedIdx], channels, highlightedIdx);
+        } else if (focusZone === 'star' && highlightedIdx >= 0 && highlightedIdx < channels.length) {
+          toggleFavorite(channels[highlightedIdx]);
+        } else if (focusZone === 'controls') {
+          controlActions[controlFocusIdx]?.action();
+        }
+      },
+      onMenu: () => {
+        if (!sidebarVisible) {
+          toggleSidebar();
+          setFocusZone('channels');
+        } else if (settingsOpen) {
+          setSettingsOpen(false);
+        }
+      },
+      onPlayPause: togglePlay,
     }),
-    [channelUp, channelDown],
+    [focusZone, highlightedIdx, controlFocusIdx, channels, sidebarVisible,
+     channelUp, channelDown, play, togglePlay, toggleMute, toggleSidebar,
+     toggleFavorite, controlActions, settingsOpen],
   );
 
   useTVRemote(remoteHandlers);
+
+  // Scroll highlighted channel into view
+  useEffect(() => {
+    if (highlightedIdx >= 0 && scrollRef.current) {
+      const itemHeight = 44;
+      scrollRef.current.scrollTo({ y: Math.max(0, highlightedIdx * itemHeight - 150), animated: true });
+    }
+  }, [highlightedIdx]);
 
   // Scroll active channel into view
   useEffect(() => {
@@ -158,7 +269,7 @@ export function TVModeScreen() {
   const showOsd = useCallback((text: string) => {
     setChannelOsd(text);
     if (osdTimerRef.current) clearTimeout(osdTimerRef.current);
-    osdTimerRef.current = setTimeout(() => setChannelOsd(null), 2000);
+    osdTimerRef.current = setTimeout(() => setChannelOsd(null), 3000);
   }, []);
 
   // Show OSD when channel changes in fullscreen
@@ -275,6 +386,7 @@ export function TVModeScreen() {
           <ScrollView ref={scrollRef} style={styles.listScroll} showsVerticalScrollIndicator={false}>
             {channels.map((ch, idx) => {
               const isActive = currentChannel?.id === ch.id;
+              const isHighlighted = focusZone === 'channels' && highlightedIdx === idx;
               return (
                 <Pressable
                   key={ch.id}
@@ -282,24 +394,28 @@ export function TVModeScreen() {
                   style={({ pressed }: { pressed: boolean }) => [
                     styles.listItem,
                     isActive && styles.listItemActive,
+                    isHighlighted && styles.listItemHighlighted,
                     pressed && styles.listItemPressed,
                   ]}
                 >
-                  <Text style={[styles.itemNumber, isActive && styles.itemTextActive]}>
+                  <Text style={[styles.itemNumber, (isActive || isHighlighted) && styles.itemTextActive]}>
                     {channelNumberMap.get(ch.id) ?? ''}
                   </Text>
                   {ch.logo && (
                     <Image source={{ uri: ch.logo }} style={styles.itemLogo} resizeMode="contain" />
                   )}
                   <Text
-                    style={[styles.itemName, isActive && styles.itemTextActive]}
+                    style={[styles.itemName, (isActive || isHighlighted) && styles.itemTextActive]}
                     numberOfLines={1}
                   >
                     {ch.name || 'Unknown'}
                   </Text>
                   <Pressable
                     onPress={() => toggleFavorite(ch)}
-                    style={styles.itemStar}
+                    style={[
+                      styles.itemStar,
+                      focusZone === 'star' && highlightedIdx === idx && styles.itemStarFocused,
+                    ]}
                     hitSlop={8}
                   >
                     <Text style={[styles.itemStarIcon, isFavorite(ch.id) && styles.itemStarActive]}>
@@ -325,30 +441,50 @@ export function TVModeScreen() {
                 <View style={styles.overlayGradient} />
                 <View style={styles.controlBar}>
                   <View style={styles.controlBarLeft}>
+                    {/* Prev — idx 0 */}
                     <Pressable
-                      onPress={() => channelDown()}
-                      style={({ pressed }) => [styles.ctrlBtn, pressed && styles.ctrlBtnPressed]}
+                      onPress={controlActions[0].action}
+                      style={({ pressed }) => [
+                        styles.ctrlBtn,
+                        pressed && styles.ctrlBtnPressed,
+                        focusZone === 'controls' && controlFocusIdx === 0 && styles.ctrlBtnFocused,
+                      ]}
                     >
                       <SkipPrevIcon size={18} color="#fff" />
                     </Pressable>
 
+                    {/* Play/Pause — idx 1 */}
                     <Pressable
                       onPress={togglePlay}
-                      style={({ pressed }) => [styles.ctrlBtn, pressed && styles.ctrlBtnPressed]}
+                      style={({ pressed }) => [
+                        styles.ctrlBtn,
+                        pressed && styles.ctrlBtnPressed,
+                        focusZone === 'controls' && controlFocusIdx === 1 && styles.ctrlBtnFocused,
+                      ]}
                     >
                       {isPlaying ? <PauseIcon size={22} color="#fff" /> : <PlayIcon size={22} color="#fff" />}
                     </Pressable>
 
+                    {/* Next — idx 2 */}
                     <Pressable
-                      onPress={() => channelUp()}
-                      style={({ pressed }) => [styles.ctrlBtn, pressed && styles.ctrlBtnPressed]}
+                      onPress={controlActions[2].action}
+                      style={({ pressed }) => [
+                        styles.ctrlBtn,
+                        pressed && styles.ctrlBtnPressed,
+                        focusZone === 'controls' && controlFocusIdx === 2 && styles.ctrlBtnFocused,
+                      ]}
                     >
                       <SkipNextIcon size={18} color="#fff" />
                     </Pressable>
 
+                    {/* Mute — idx 3 */}
                     <Pressable
                       onPress={toggleMute}
-                      style={({ pressed }) => [styles.ctrlBtn, pressed && styles.ctrlBtnPressed]}
+                      style={({ pressed }) => [
+                        styles.ctrlBtn,
+                        pressed && styles.ctrlBtnPressed,
+                        focusZone === 'controls' && controlFocusIdx === 3 && styles.ctrlBtnFocused,
+                      ]}
                     >
                       {isMuted ? <VolumeMuteIcon size={20} color="#fff" /> : <VolumeOnIcon size={20} color="#fff" />}
                     </Pressable>
@@ -359,23 +495,47 @@ export function TVModeScreen() {
                   </View>
 
                   {isBuffering && (
-                    <Text style={styles.controlBarStatus}>Buffering...</Text>
+                    <Text style={styles.controlBarStatus}>{t(uiLanguage, 'buffering')}</Text>
                   )}
                   {playerError && (
                     <Text style={styles.controlBarError}>{playerError}</Text>
                   )}
 
                   <View style={styles.controlBarRight}>
+                    {/* Favorite — idx 4 */}
+                    <Pressable
+                      onPress={controlActions[4].action}
+                      style={({ pressed }) => [
+                        styles.ctrlBtn,
+                        pressed && styles.ctrlBtnPressed,
+                        focusZone === 'controls' && controlFocusIdx === 4 && styles.ctrlBtnFocused,
+                      ]}
+                    >
+                      <Text style={[styles.ctrlStarIcon, currentChannel && isFavorite(currentChannel.id) && styles.ctrlStarActive]}>
+                        {currentChannel && isFavorite(currentChannel.id) ? '\u2605' : '\u2606'}
+                      </Text>
+                    </Pressable>
+
+                    {/* Reload — idx 5 */}
                     <Pressable
                       onPress={reload}
-                      style={({ pressed }) => [styles.ctrlBtn, pressed && styles.ctrlBtnPressed]}
+                      style={({ pressed }) => [
+                        styles.ctrlBtn,
+                        pressed && styles.ctrlBtnPressed,
+                        focusZone === 'controls' && controlFocusIdx === 5 && styles.ctrlBtnFocused,
+                      ]}
                     >
                       <ReloadIcon size={18} color="#fff" />
                     </Pressable>
 
+                    {/* Fullscreen — idx 6 */}
                     <Pressable
                       onPress={toggleSidebar}
-                      style={({ pressed }) => [styles.ctrlBtn, pressed && styles.ctrlBtnPressed]}
+                      style={({ pressed }) => [
+                        styles.ctrlBtn,
+                        pressed && styles.ctrlBtnPressed,
+                        focusZone === 'controls' && controlFocusIdx === 6 && styles.ctrlBtnFocused,
+                      ]}
                     >
                       <FullscreenIcon size={20} color="#fff" />
                     </Pressable>
@@ -416,6 +576,29 @@ export function TVModeScreen() {
           setTimeout(() => setCacheCleared(false), 2000);
         };
 
+        const handleCheckUpdate = async () => {
+          setUpdateChecking(true);
+          const info = await checkForUpdate();
+          setUpdateInfo(info.hasUpdate ? info : null);
+          setUpdateChecking(false);
+          if (!info.hasUpdate) {
+            // Flash "up to date" briefly
+            setUpdateInfo({ version: APP_VERSION, downloadUrl: '', hasUpdate: false });
+            setTimeout(() => setUpdateInfo(null), 2000);
+          }
+        };
+
+        const handleApplyUpdate = async () => {
+          if (!updateInfo?.downloadUrl) return;
+          setUpdateApplying(true);
+          try {
+            await applyUpdate(updateInfo.downloadUrl);
+          } catch (err) {
+            console.error('Update failed:', err);
+            setUpdateApplying(false);
+          }
+        };
+
         const modalInner = (
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
@@ -433,6 +616,38 @@ export function TVModeScreen() {
                 onChange={setUiLanguage}
                 options={UI_LANGUAGES}
               />
+
+              {/* Check for updates */}
+              <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>
+                {t(uiLanguage, 'checkUpdates')}
+              </Text>
+              {updateInfo?.hasUpdate ? (
+                <Pressable
+                  onPress={handleApplyUpdate}
+                  disabled={updateApplying}
+                  style={({ pressed }) => [styles.modalUpdateBtn, pressed && styles.modalUpdateBtnPressed]}
+                >
+                  <Text style={styles.modalUpdateBtnText}>
+                    {updateApplying
+                      ? t(uiLanguage, 'updating')
+                      : `${t(uiLanguage, 'updateAvailable')}: v${updateInfo.version}`}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  onPress={handleCheckUpdate}
+                  disabled={updateChecking}
+                  style={({ pressed }) => [styles.modalCheckBtn, pressed && styles.modalCheckBtnPressed]}
+                >
+                  <Text style={styles.modalCheckBtnText}>
+                    {updateChecking
+                      ? t(uiLanguage, 'checking')
+                      : updateInfo && !updateInfo.hasUpdate
+                        ? t(uiLanguage, 'upToDate')
+                        : t(uiLanguage, 'checkUpdates')}
+                  </Text>
+                </Pressable>
+              )}
 
               {/* Clear cache */}
               <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>
@@ -606,6 +821,11 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: colors.accent,
   },
+  listItemHighlighted: {
+    backgroundColor: colors.surfaceLight,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.focusBorder,
+  },
   listItemPressed: {
     backgroundColor: colors.surfaceLight,
   },
@@ -642,6 +862,12 @@ const styles = StyleSheet.create({
   },
   itemStarActive: {
     color: colors.focusBorder,
+  },
+  itemStarFocused: {
+    backgroundColor: colors.surfaceHighlight,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.focusBorder,
   },
 
   // Player
@@ -699,6 +925,19 @@ const styles = StyleSheet.create({
   },
   ctrlBtnPressed: {
     backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  ctrlBtnFocused: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 2,
+    borderColor: colors.focusBorder,
+    borderRadius: 6,
+  },
+  ctrlStarIcon: {
+    fontSize: 20,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  ctrlStarActive: {
+    color: colors.focusBorder,
   },
   controlBarTitle: {
     ...typography.body,
@@ -800,6 +1039,39 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     fontSize: 10,
     marginBottom: spacing.sm,
+  },
+  modalCheckBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.surfaceHighlight,
+    alignItems: 'center',
+  } as any,
+  modalCheckBtnPressed: {
+    backgroundColor: colors.surfaceHighlight,
+  },
+  modalCheckBtnText: {
+    ...typography.body,
+    color: colors.textSecondary,
+    fontSize: 13,
+  },
+  modalUpdateBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+  } as any,
+  modalUpdateBtnPressed: {
+    opacity: 0.8,
+  },
+  modalUpdateBtnText: {
+    ...typography.body,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   modalDangerBtn: {
     paddingHorizontal: 14,
