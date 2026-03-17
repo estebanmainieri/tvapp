@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Tve+ Download</title>
+  <script>
+    // Redirect to latest APK from GitHub Releases
+    fetch('https://api.github.com/repos/estebanmainieri/tvapp/releases/latest')
+      .then(r => r.json())
+      .then(release => {
+        const apk = release.assets.find(a => a.name.endsWith('.apk'));
+        if (apk) {
+          window.location.href = apk.browser_download_url;
+        } else {
+          document.getElementById('msg').textContent = 'No APK found in latest release.';
+        }
+      })
+      .catch(() => {
+        document.getElementById('msg').textContent = 'Error fetching release.';
+      });
+  </script>
+  <style>
+    body { background: #1a1a2e; color: #fff; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    .container { text-align: center; }
+    h1 { font-size: 3em; margin-bottom: 0.2em; }
+    .plus { color: #e53e3e; }
+    p { color: #aaa; font-size: 1.2em; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Tve<span class="plus">+</span></h1>
+    <p id="msg">Descargando última versión...</p>
+  </div>
+</body>
+</html>
