@@ -11,9 +11,9 @@ import { isMainstreamChannel } from '../../data/mainstream';
 
 const BASE_URL = 'https://iptv-org.github.io/api';
 
-async function fetchJSON<T>(url: string): Promise<T> {
+async function fetchJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
   console.log(`[IPTV] Fetching ${url}...`);
-  const response = await fetch(url);
+  const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
   }
@@ -126,16 +126,17 @@ export function buildChannelIndex(
 
 
 function pickBestStream(streams: IPTVRawStream[]): IPTVRawStream {
-  // Prefer streams with quality info, then by quality value
-  const withQuality = streams.filter(s => s.quality);
-  if (withQuality.length > 0) {
-    // Sort by quality descending (1080p > 720p > 480p etc.)
-    withQuality.sort((a, b) => {
-      const qa = parseInt(a.quality || '0', 10);
-      const qb = parseInt(b.quality || '0', 10);
-      return qb - qa;
-    });
-    return withQuality[0];
+  // Single pass — find highest quality stream without filter+sort
+  let best = streams[0];
+  let bestQ = 0;
+  for (const s of streams) {
+    if (s.quality) {
+      const q = parseInt(s.quality, 10);
+      if (q > bestQ) {
+        bestQ = q;
+        best = s;
+      }
+    }
   }
-  return streams[0];
+  return best;
 }

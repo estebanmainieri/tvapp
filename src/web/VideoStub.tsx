@@ -2,7 +2,7 @@
  * Web stub for react-native-video.
  * Uses HTML5 <video> + hls.js for HLS stream support in browsers.
  */
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Hls from 'hls.js';
 
@@ -14,7 +14,6 @@ interface VideoSource {
 /** Rewrite external stream URLs through our local CORS proxy */
 function proxyUrl(uri: string): string {
   if (!uri) return uri;
-  // Already relative or already proxied
   if (uri.startsWith('/') || uri.startsWith('blob:')) return uri;
   return `/stream-proxy/${encodeURIComponent(uri)}`;
 }
@@ -44,11 +43,16 @@ function Video({
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
 
+  // Pre-compute header entries once per source change
+  const headerEntries = useMemo(() => {
+    if (!source.headers) return null;
+    return Object.entries(source.headers);
+  }, [source.headers]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !source.uri) return;
 
-    // Cleanup previous HLS instance
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
@@ -58,19 +62,19 @@ function Video({
 
     if (isHls && Hls.isSupported()) {
       const hls = new Hls({
-        enableWorker: false, // save threads on low-power TV boxes
-        lowLatencyMode: false, // prefer stability over latency
-        maxBufferLength: 15, // seconds — reduce memory usage
+        enableWorker: false,
+        lowLatencyMode: false,
+        maxBufferLength: 15,
         maxMaxBufferLength: 30,
-        maxBufferSize: 30 * 1000 * 1000, // 30MB max buffer
-        startLevel: -1, // auto-select quality
-        abrEwmaDefaultEstimate: 500000, // start with 500kbps estimate
+        maxBufferSize: 30 * 1000 * 1000,
+        startLevel: -1,
+        abrEwmaDefaultEstimate: 500000,
         xhrSetup: (xhr) => {
-          xhr.timeout = 15000; // 15s timeout per request
-          if (source.headers) {
-            Object.entries(source.headers).forEach(([key, value]) => {
+          xhr.timeout = 15000;
+          if (headerEntries) {
+            for (const [key, value] of headerEntries) {
               try { xhr.setRequestHeader(key, value); } catch (_) {}
-            });
+            }
           }
         },
       });
@@ -94,7 +98,6 @@ function Video({
 
       hlsRef.current = hls;
     } else if (isHls && video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari native HLS
       video.src = proxyUrl(source.uri);
       video.addEventListener('loadeddata', () => {
         onLoad?.({ duration: 0, naturalSize: {} });
@@ -103,7 +106,6 @@ function Video({
         video.play().catch(() => {});
       }
     } else {
-      // Direct video (mp4, etc.)
       video.src = proxyUrl(source.uri);
       video.addEventListener('loadeddata', () => {
         onLoad?.({ duration: 0, naturalSize: {} });
@@ -119,12 +121,11 @@ function Video({
         hlsRef.current = null;
       }
     };
-  }, [source.uri]);
+  }, [source.uri, headerEntries]);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-
     if (paused) {
       video.pause();
     } else {
@@ -138,29 +139,27 @@ function Video({
     video.muted = !!muted;
   }, [muted]);
 
-  const objectFit =
-    resizeMode === 'contain'
-      ? 'contain'
-      : resizeMode === 'cover'
-        ? 'cover'
-        : 'fill';
+  const handleWaiting = useCallback(() => onBuffer?.({ isBuffering: true }), [onBuffer]);
+  const handlePlaying = useCallback(() => onBuffer?.({ isBuffering: false }), [onBuffer]);
+  const handleError = useCallback(() => onError?.({ error: { errorString: 'Video playback error' } }), [onError]);
+
+  const videoStyle = useMemo(() => ({
+    width: '100%',
+    height: '100%',
+    objectFit: resizeMode === 'contain' ? 'contain' as const
+      : resizeMode === 'cover' ? 'cover' as const : 'fill' as const,
+    backgroundColor: '#000',
+  }), [resizeMode]);
 
   return (
     <View style={[styles.container, style]}>
       <video
         ref={videoRef}
         autoPlay={!paused}
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit,
-          backgroundColor: '#000',
-        }}
-        onWaiting={() => onBuffer?.({ isBuffering: true })}
-        onPlaying={() => onBuffer?.({ isBuffering: false })}
-        onError={() =>
-          onError?.({ error: { errorString: 'Video playback error' } })
-        }
+        style={videoStyle}
+        onWaiting={handleWaiting}
+        onPlaying={handlePlaying}
+        onError={handleError}
       />
     </View>
   );
@@ -173,7 +172,6 @@ const styles = StyleSheet.create({
   },
 });
 
-// Named exports for type compatibility
 export type OnLoadData = any;
 export type OnBufferData = { isBuffering: boolean };
 export type OnVideoErrorData = any;

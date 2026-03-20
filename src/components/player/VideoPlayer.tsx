@@ -1,8 +1,15 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Video, { OnLoadData, OnBufferData, OnVideoErrorData } from 'react-native-video';
 import { usePlayerStore } from '../../hooks/usePlayerStore';
 import { colors } from '../../theme';
+
+const bufferConfig = {
+  minBufferMs: 5000,
+  maxBufferMs: 30000,
+  bufferForPlaybackMs: 2500,
+  bufferForPlaybackAfterRebufferMs: 5000,
+};
 
 export function VideoPlayer() {
   const videoRef = useRef<any>(null);
@@ -30,24 +37,28 @@ export function VideoPlayer() {
     [setError],
   );
 
-  if (!currentChannel) return null;
+  const source = useMemo(() => {
+    if (!currentChannel) return null;
+    const headers: Record<string, string> = {};
+    if (currentChannel.meta?.userAgent) {
+      headers['User-Agent'] = currentChannel.meta.userAgent;
+    }
+    if (currentChannel.meta?.referrer) {
+      headers.Referer = currentChannel.meta.referrer;
+    }
+    return {
+      uri: currentChannel.streamUrl,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+    };
+  }, [currentChannel?.streamUrl, currentChannel?.meta?.userAgent, currentChannel?.meta?.referrer]);
 
-  const headers: Record<string, string> = {};
-  if (currentChannel.meta?.userAgent) {
-    headers['User-Agent'] = currentChannel.meta.userAgent;
-  }
-  if (currentChannel.meta?.referrer) {
-    headers.Referer = currentChannel.meta.referrer;
-  }
+  if (!currentChannel || !source) return null;
 
   return (
     <View style={styles.container}>
       <Video
         ref={videoRef}
-        source={{
-          uri: currentChannel.streamUrl,
-          headers: Object.keys(headers).length > 0 ? headers : undefined,
-        }}
+        source={source}
         style={styles.video}
         resizeMode="contain"
         paused={!isPlaying}
@@ -55,12 +66,7 @@ export function VideoPlayer() {
         onLoad={handleLoad}
         onBuffer={handleBuffer}
         onError={handleError}
-        bufferConfig={{
-          minBufferMs: 5000,
-          maxBufferMs: 30000,
-          bufferForPlaybackMs: 2500,
-          bufferForPlaybackAfterRebufferMs: 5000,
-        }}
+        bufferConfig={bufferConfig}
       />
     </View>
   );

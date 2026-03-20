@@ -20,6 +20,28 @@ import {
   SkipPrevIcon, SkipNextIcon, GlobeIcon, GearIcon,
 } from '../components/player/PlayerIcons';
 
+const selectStyle = {
+  backgroundColor: colors.surfaceLight,
+  color: colors.textSecondary,
+  border: `1px solid ${colors.surfaceHighlight}`,
+  borderRadius: 6,
+  padding: '4px 8px',
+  fontSize: 12,
+  outline: 'none',
+  cursor: 'pointer',
+  width: '100%',
+} as any;
+
+const countrySelectStyle = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  width: '100%',
+  height: '100%',
+  opacity: 0,
+  cursor: 'pointer',
+} as any;
+
 function SelectPicker({ value, onChange, options }: {
   value: string;
   onChange: (value: string) => void;
@@ -30,17 +52,7 @@ function SelectPicker({ value, onChange, options }: {
       <select
         value={value}
         onChange={(e: any) => onChange(e.target.value)}
-        style={{
-          backgroundColor: colors.surfaceLight,
-          color: colors.textSecondary,
-          border: `1px solid ${colors.surfaceHighlight}`,
-          borderRadius: 6,
-          padding: '4px 8px',
-          fontSize: 12,
-          outline: 'none',
-          cursor: 'pointer',
-          width: '100%',
-        } as any}
+        style={selectStyle}
       >
         {options.map(opt => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -115,6 +127,125 @@ const ChannelItem = memo(function ChannelItem({
   );
 });
 
+const modalLabelWithMargin = [{ marginTop: spacing.md }];
+
+const SettingsModal = memo(function SettingsModal({
+  uiLanguage, setUiLanguage, updateInfo, setUpdateInfo, onClose,
+}: {
+  uiLanguage: string;
+  setUiLanguage: (lang: string) => void;
+  updateInfo: UpdateInfo | null;
+  setUpdateInfo: (info: UpdateInfo | null) => void;
+  onClose: () => void;
+}) {
+  const [cacheCleared, setCacheCleared] = useState(false);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateApplying, setUpdateApplying] = useState(false);
+
+  const handleClearCache = useCallback(async () => {
+    await AsyncStorage.clear();
+    setCacheCleared(true);
+    setTimeout(() => setCacheCleared(false), 2000);
+  }, []);
+
+  const handleCheckUpdate = useCallback(async () => {
+    setUpdateChecking(true);
+    const info = await checkForUpdate();
+    setUpdateInfo(info.hasUpdate ? info : null);
+    setUpdateChecking(false);
+    if (!info.hasUpdate) {
+      setUpdateInfo({ version: APP_VERSION, downloadUrl: '', hasUpdate: false });
+      setTimeout(() => setUpdateInfo(null), 2000);
+    }
+  }, [setUpdateInfo]);
+
+  const handleApplyUpdate = useCallback(async () => {
+    if (!updateInfo?.downloadUrl) return;
+    setUpdateApplying(true);
+    try {
+      await applyUpdate(updateInfo.downloadUrl);
+    } catch (err) {
+      console.error('Update failed:', err);
+      setUpdateApplying(false);
+    }
+  }, [updateInfo?.downloadUrl]);
+
+  const modalInner = (
+    <View style={styles.modalContent}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>{t(uiLanguage, 'settings')}</Text>
+        <Pressable onPress={onClose} style={styles.modalClose}>
+          <Text style={styles.modalCloseIcon}>{'\u2715'}</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.modalBody}>
+        <Text style={styles.modalLabel}>{t(uiLanguage, 'language')}</Text>
+        <SelectPicker value={uiLanguage} onChange={setUiLanguage} options={UI_LANGUAGES} />
+
+        <Text style={[styles.modalLabel, ...modalLabelWithMargin]}>
+          {t(uiLanguage, 'checkUpdates')}
+        </Text>
+        {updateInfo?.hasUpdate ? (
+          <Pressable
+            onPress={handleApplyUpdate}
+            disabled={updateApplying}
+            style={({ pressed }) => [styles.modalUpdateBtn, pressed && styles.modalUpdateBtnPressed]}
+          >
+            <Text style={styles.modalUpdateBtnText}>
+              {updateApplying
+                ? t(uiLanguage, 'updating')
+                : `${t(uiLanguage, 'updateAvailable')}: v${updateInfo.version}`}
+            </Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={handleCheckUpdate}
+            disabled={updateChecking}
+            style={({ pressed }) => [styles.modalCheckBtn, pressed && styles.modalCheckBtnPressed]}
+          >
+            <Text style={styles.modalCheckBtnText}>
+              {updateChecking
+                ? t(uiLanguage, 'checking')
+                : updateInfo && !updateInfo.hasUpdate
+                  ? t(uiLanguage, 'upToDate')
+                  : t(uiLanguage, 'checkUpdates')}
+            </Text>
+          </Pressable>
+        )}
+
+        <Text style={[styles.modalLabel, ...modalLabelWithMargin]}>
+          {t(uiLanguage, 'clearCache')}
+        </Text>
+        <Pressable
+          onPress={handleClearCache}
+          style={({ pressed }) => [styles.modalDangerBtn, pressed && styles.modalDangerBtnPressed]}
+        >
+          <Text style={styles.modalDangerBtnText}>
+            {cacheCleared ? t(uiLanguage, 'clearCacheDone') : t(uiLanguage, 'clearCache')}
+          </Text>
+        </Pressable>
+
+        <View style={styles.modalFooter}>
+          <Text style={styles.modalVersion}>{t(uiLanguage, 'version')} {APP_VERSION}</Text>
+          <Text style={styles.modalContact}>{t(uiLanguage, 'contact')}: tveplus@app.com</Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  if (Platform.OS === 'web') {
+    return <View style={styles.modalOverlay}>{modalInner}</View>;
+  }
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.modalOverlay} onPress={onClose}>
+        {modalInner}
+      </Pressable>
+    </Modal>
+  );
+});
+
 const ITEM_HEIGHT = 44;
 
 export function TVModeScreen() {
@@ -133,10 +264,7 @@ export function TVModeScreen() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [channelOsd, setChannelOsd] = useState<string | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [cacheCleared, setCacheCleared] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [updateChecking, setUpdateChecking] = useState(false);
-  const [updateApplying, setUpdateApplying] = useState(false);
 
   // Focus zones for D-pad navigation: toolbar > channels > star > controls
   const [focusZone, setFocusZone] = useState<'channels' | 'star' | 'controls' | 'toolbar'>('channels');
@@ -185,17 +313,18 @@ export function TVModeScreen() {
 
   const channelNumberMap = allChannels.numberMap;
 
+  const favIdSet = useMemo(() => new Set(favorites.map(f => f.id)), [favorites]);
+
   const channels = useMemo(() => {
     let list = allChannels.list;
     if (showFavoritesOnly) {
-      const favIds = new Set(favorites.map(f => f.id));
-      list = list.filter(ch => favIds.has(ch.id));
+      list = list.filter(ch => favIdSet.has(ch.id));
     }
     if (showMainstreamOnly) {
       list = list.filter(ch => ch.isMainstream);
     }
     return list;
-  }, [allChannels, showFavoritesOnly, showMainstreamOnly, favorites]);
+  }, [allChannels, showFavoritesOnly, showMainstreamOnly, favIdSet]);
 
   // Auto-play first channel only on initial mount (not on filter changes)
   const hasAutoPlayed = useRef(false);
@@ -216,14 +345,14 @@ export function TVModeScreen() {
 
   // Control buttons in order for D-pad navigation
   const controlActions = useMemo(() => [
-    { id: 'prev', action: () => { const idx = channels.indexOf(currentChannel!); if (idx > 0) { play(channels[idx - 1], channels, idx - 1); } } },
+    { id: 'prev', action: () => { if (currentIdx > 0) { play(channels[currentIdx - 1], channels, currentIdx - 1); } } },
     { id: 'playpause', action: togglePlay },
-    { id: 'next', action: () => { const idx = channels.indexOf(currentChannel!); if (idx < channels.length - 1) { play(channels[idx + 1], channels, idx + 1); } } },
+    { id: 'next', action: () => { if (currentIdx < channels.length - 1) { play(channels[currentIdx + 1], channels, currentIdx + 1); } } },
     { id: 'mute', action: toggleMute },
     { id: 'fav', action: () => { if (currentChannel) toggleFavorite(currentChannel); } },
     { id: 'reload', action: reload },
     { id: 'fullscreen', action: toggleSidebar },
-  ], [channels, currentChannel, play, togglePlay, toggleMute, toggleFavorite, reload, toggleSidebar]);
+  ], [channels, currentChannel, currentIdx, play, togglePlay, toggleMute, toggleFavorite, reload, toggleSidebar]);
 
   // TV remote handlers — D-pad navigation with focus zones
   const remoteHandlers = useMemo(
@@ -273,7 +402,7 @@ export function TVModeScreen() {
           setFocusZone('controls');
           setControlFocusIdx(0);
         } else if (focusZone === 'controls') {
-          setControlFocusIdx(prev => Math.min(prev + 1, controlActions.length - 1));
+          setControlFocusIdx(prev => Math.min(prev + 1, 6)); // 7 control buttons (0-6)
         }
       },
       // Left
@@ -320,7 +449,7 @@ export function TVModeScreen() {
     }),
     [focusZone, highlightedIdx, controlFocusIdx, toolbarFocusIdx, channels, sidebarVisible,
      channelUp, channelDown, play, togglePlay, toggleMute, toggleSidebar,
-     toggleFavorite, toggleFavoritesOnly, toggleMainstreamOnly, controlActions, settingsOpen],
+     toggleFavorite, toggleFavoritesOnly, toggleMainstreamOnly, settingsOpen],
   );
 
   useTVRemote(remoteHandlers);
@@ -425,15 +554,7 @@ export function TVModeScreen() {
                 <select
                   value={selectedCountry}
                   onChange={(e: any) => setCountry(e.target.value)}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    opacity: 0,
-                    cursor: 'pointer',
-                  } as any}
+                  style={countrySelectStyle}
                 >
                   {countryOptions.map(opt => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -653,122 +774,15 @@ export function TVModeScreen() {
       </View>
 
       {/* Settings modal */}
-      {settingsOpen && (() => {
-        const handleClearCache = async () => {
-          await AsyncStorage.clear();
-          setCacheCleared(true);
-          setTimeout(() => setCacheCleared(false), 2000);
-        };
-
-        const handleCheckUpdate = async () => {
-          setUpdateChecking(true);
-          const info = await checkForUpdate();
-          setUpdateInfo(info.hasUpdate ? info : null);
-          setUpdateChecking(false);
-          if (!info.hasUpdate) {
-            setUpdateInfo({ version: APP_VERSION, downloadUrl: '', hasUpdate: false });
-            setTimeout(() => setUpdateInfo(null), 2000);
-          }
-        };
-
-        const handleApplyUpdate = async () => {
-          if (!updateInfo?.downloadUrl) return;
-          setUpdateApplying(true);
-          try {
-            await applyUpdate(updateInfo.downloadUrl);
-          } catch (err) {
-            console.error('Update failed:', err);
-            setUpdateApplying(false);
-          }
-        };
-
-        const modalInner = (
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t(uiLanguage, 'settings')}</Text>
-              <Pressable onPress={() => setSettingsOpen(false)} style={styles.modalClose}>
-                <Text style={styles.modalCloseIcon}>{'\u2715'}</Text>
-              </Pressable>
-            </View>
-
-            <View style={styles.modalBody}>
-              {/* Language */}
-              <Text style={styles.modalLabel}>{t(uiLanguage, 'language')}</Text>
-              <SelectPicker
-                value={uiLanguage}
-                onChange={setUiLanguage}
-                options={UI_LANGUAGES}
-              />
-
-              {/* Check for updates */}
-              <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>
-                {t(uiLanguage, 'checkUpdates')}
-              </Text>
-              {updateInfo?.hasUpdate ? (
-                <Pressable
-                  onPress={handleApplyUpdate}
-                  disabled={updateApplying}
-                  style={({ pressed }) => [styles.modalUpdateBtn, pressed && styles.modalUpdateBtnPressed]}
-                >
-                  <Text style={styles.modalUpdateBtnText}>
-                    {updateApplying
-                      ? t(uiLanguage, 'updating')
-                      : `${t(uiLanguage, 'updateAvailable')}: v${updateInfo.version}`}
-                  </Text>
-                </Pressable>
-              ) : (
-                <Pressable
-                  onPress={handleCheckUpdate}
-                  disabled={updateChecking}
-                  style={({ pressed }) => [styles.modalCheckBtn, pressed && styles.modalCheckBtnPressed]}
-                >
-                  <Text style={styles.modalCheckBtnText}>
-                    {updateChecking
-                      ? t(uiLanguage, 'checking')
-                      : updateInfo && !updateInfo.hasUpdate
-                        ? t(uiLanguage, 'upToDate')
-                        : t(uiLanguage, 'checkUpdates')}
-                  </Text>
-                </Pressable>
-              )}
-
-              {/* Clear cache */}
-              <Text style={[styles.modalLabel, { marginTop: spacing.md }]}>
-                {t(uiLanguage, 'clearCache')}
-              </Text>
-              <Pressable
-                onPress={handleClearCache}
-                style={({ pressed }) => [styles.modalDangerBtn, pressed && styles.modalDangerBtnPressed]}
-              >
-                <Text style={styles.modalDangerBtnText}>
-                  {cacheCleared ? t(uiLanguage, 'clearCacheDone') : t(uiLanguage, 'clearCache')}
-                </Text>
-              </Pressable>
-
-              {/* Version + Contact */}
-              <View style={styles.modalFooter}>
-                <Text style={styles.modalVersion}>
-                  {t(uiLanguage, 'version')} {APP_VERSION}
-                </Text>
-                <Text style={styles.modalContact}>
-                  {t(uiLanguage, 'contact')}: tveplus@app.com
-                </Text>
-              </View>
-            </View>
-          </View>
-        );
-
-        if (Platform.OS === 'web') {
-          return <View style={styles.modalOverlay}>{modalInner}</View>;
-        }
-        return (
-          <Modal visible transparent animationType="fade" onRequestClose={() => setSettingsOpen(false)}>
-            <Pressable style={styles.modalOverlay} onPress={() => setSettingsOpen(false)}>
-              {modalInner}
-            </Pressable>
-          </Modal>
-        );
-      })()}
+      {settingsOpen && (
+        <SettingsModal
+          uiLanguage={uiLanguage}
+          setUiLanguage={setUiLanguage}
+          updateInfo={updateInfo}
+          setUpdateInfo={setUpdateInfo}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </View>
   );
 }

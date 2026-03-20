@@ -73,17 +73,21 @@ export const useFilterStore = create<FilterStore>((set, get) => ({
   },
 
   initialize: (detectedCountry: string) => {
-    getSettings().then(settings => {
-      const country = settings.preferredCountry || detectedCountry || 'US';
-      set({
-        selectedCountry: country,
-        selectedLanguage: settings.preferredLanguage ?? 'all',
-        uiLanguage: settings.uiLanguage ?? getDefaultLangForCountry(country),
-        showFavoritesOnly: settings.showFavoritesOnly ?? false,
-        showMainstreamOnly: settings.showMainstreamOnly ?? false,
-        sidebarVisible: settings.sidebarVisible ?? true,
-        initialized: true,
+    getSettings()
+      .then(settings => {
+        const country = settings.preferredCountry || detectedCountry || 'US';
+        set({
+          selectedCountry: country,
+          selectedLanguage: settings.preferredLanguage ?? 'all',
+          uiLanguage: settings.uiLanguage ?? getDefaultLangForCountry(country),
+          showFavoritesOnly: settings.showFavoritesOnly ?? false,
+          showMainstreamOnly: settings.showMainstreamOnly ?? false,
+          sidebarVisible: settings.sidebarVisible ?? true,
+          initialized: true,
+        });
+      })
+      .catch(() => {
+        set({ selectedCountry: detectedCountry || 'US', initialized: true });
       });
-    });
   },
 }));

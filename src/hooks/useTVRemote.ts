@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { Platform } from 'react-native';
 
 // useTVEventHandler only exists in react-native-tvos, not in react-native-web
@@ -29,77 +29,68 @@ interface TVRemoteHandlers {
   onPlayPause?: () => void;
 }
 
-// Keyboard mapping for web: arrow keys + enter simulate TV remote
+// Use ref to avoid re-attaching listeners on every handler change
 function useWebKeyboardNav(handlers: TVRemoteHandlers) {
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+
   useEffect(() => {
     if (Platform.OS !== 'web') return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      const h = handlersRef.current;
       switch (e.key) {
         case 'ArrowUp':
           e.preventDefault();
-          handlers.onUp?.();
+          h.onUp?.();
           break;
         case 'ArrowDown':
           e.preventDefault();
-          handlers.onDown?.();
+          h.onDown?.();
           break;
         case 'ArrowLeft':
-          handlers.onLeft?.();
+          h.onLeft?.();
           break;
         case 'ArrowRight':
-          handlers.onRight?.();
+          h.onRight?.();
           break;
         case 'Enter':
-          handlers.onSelect?.();
+          h.onSelect?.();
           break;
         case 'Escape':
-          handlers.onMenu?.();
+          h.onMenu?.();
           break;
         case ' ':
           e.preventDefault();
-          handlers.onPlayPause?.();
+          h.onPlayPause?.();
           break;
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handlers]);
+  }, []); // attach once, read from ref
 }
 
 export function useTVRemote(handlers: TVRemoteHandlers) {
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+
   const handleEvent = useCallback(
     (evt: { eventType: string }) => {
+      const h = handlersRef.current;
       switch (evt.eventType) {
-        case 'select':
-          handlers.onSelect?.();
-          break;
-        case 'longSelect':
-          handlers.onLongSelect?.();
-          break;
-        case 'up':
-          handlers.onUp?.();
-          break;
-        case 'down':
-          handlers.onDown?.();
-          break;
-        case 'left':
-          handlers.onLeft?.();
-          break;
-        case 'right':
-          handlers.onRight?.();
-          break;
-        case 'menu':
-          handlers.onMenu?.();
-          break;
-        case 'playPause':
-          handlers.onPlayPause?.();
-          break;
+        case 'select': h.onSelect?.(); break;
+        case 'longSelect': h.onLongSelect?.(); break;
+        case 'up': h.onUp?.(); break;
+        case 'down': h.onDown?.(); break;
+        case 'left': h.onLeft?.(); break;
+        case 'right': h.onRight?.(); break;
+        case 'menu': h.onMenu?.(); break;
+        case 'playPause': h.onPlayPause?.(); break;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [handlers],
+    [],
   );
 
   // On TV platforms, use the native TV event handler

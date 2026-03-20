@@ -86,11 +86,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   reload: () => {
     const { currentChannel } = get();
     if (!currentChannel) return;
-    // Force re-mount by toggling channel off and back on
     set({ currentChannel: null, isPlaying: false, isBuffering: true, error: null });
     setTimeout(() => {
       set({ currentChannel, isPlaying: true });
-    }, 100);
+    }, 500);
   },
 
   stop: () => {
