@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
 import { UnifiedChannel } from '../types';
 import {
   getFavorites,
@@ -29,8 +30,12 @@ export function useFavorites() {
     },
   });
 
-  const isFavorite = (channelId: string) =>
-    query.data?.some(f => f.id === channelId) ?? false;
+  // O(1) lookup Set instead of O(n) array scan
+  const favoriteIds = useMemo(() => {
+    return new Set((query.data ?? []).map(f => f.id));
+  }, [query.data]);
+
+  const isFavorite = (channelId: string) => favoriteIds.has(channelId);
 
   return {
     favorites: query.data ?? [],

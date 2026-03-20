@@ -1,5 +1,5 @@
-import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
-import { View, Text, Image, Pressable, ScrollView, StyleSheet, Platform, Modal } from 'react-native';
+import React, { useEffect, useCallback, useMemo, useRef, useState, memo } from 'react';
+import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal } from 'react-native';
 import { VideoPlayer } from '../components/player/VideoPlayer';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorState } from '../components/common/ErrorState';
@@ -55,6 +55,68 @@ function SelectPicker({ value, onChange, options }: {
   );
 }
 
+// Memoized channel list item for performance
+const ChannelItem = memo(function ChannelItem({
+  channel,
+  number,
+  isActive,
+  isHighlighted,
+  isFav,
+  starFocused,
+  onPress,
+  onStarPress,
+}: {
+  channel: UnifiedChannel;
+  number: number;
+  isActive: boolean;
+  isHighlighted: boolean;
+  isFav: boolean;
+  starFocused: boolean;
+  onPress: () => void;
+  onStarPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }: { pressed: boolean }) => [
+        styles.listItem,
+        isActive && styles.listItemActive,
+        isHighlighted && styles.listItemHighlighted,
+        pressed && styles.listItemPressed,
+      ]}
+    >
+      <View style={[styles.itemNumberBubble, (isActive || isHighlighted) && styles.itemNumberBubbleActive]}>
+        <Text style={[styles.itemNumber, (isActive || isHighlighted) && styles.itemTextActive]}>
+          {number}
+        </Text>
+      </View>
+      {channel.logo && (
+        <Image source={{ uri: channel.logo }} style={styles.itemLogo} resizeMode="contain" />
+      )}
+      <Text
+        style={[styles.itemName, (isActive || isHighlighted) && styles.itemTextActive]}
+        numberOfLines={1}
+      >
+        {channel.name || 'Unknown'}
+      </Text>
+      <Pressable
+        onPress={onStarPress}
+        style={[
+          styles.itemStar,
+          starFocused && styles.itemStarFocused,
+        ]}
+        hitSlop={8}
+      >
+        <Text style={[styles.itemStarIcon, isFav && styles.itemStarActive]}>
+          {isFav ? '\u2605' : '\u2606'}
+        </Text>
+      </Pressable>
+    </Pressable>
+  );
+});
+
+const ITEM_HEIGHT = 44;
+
 export function TVModeScreen() {
   const { data: channelIndex, isLoading, error, refetch } = useIPTVChannels();
   const {
@@ -67,7 +129,7 @@ export function TVModeScreen() {
   } = useFilterStore();
   const { data: countries } = useIPTVCountries();
   const { data: languages } = useIPTVLanguages();
-  const scrollRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [channelOsd, setChannelOsd] = useState<string | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -76,10 +138,12 @@ export function TVModeScreen() {
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateApplying, setUpdateApplying] = useState(false);
 
-  // Focus zones for D-pad navigation: channels > star > controls
+  // Focus zones for D-pad navigation: toolbar > channels > star > controls
   const [focusZone, setFocusZone] = useState<'channels' | 'star' | 'controls' | 'toolbar'>('channels');
   const [highlightedIdx, setHighlightedIdx] = useState(-1);
   const [controlFocusIdx, setControlFocusIdx] = useState(0);
+  // Toolbar items: 0=Favorites, 1=Popular, 2=Country, 3=Settings
+  const [toolbarFocusIdx, setToolbarFocusIdx] = useState(0);
 
   // Background update check
   useEffect(() => {
@@ -113,7 +177,7 @@ export function TVModeScreen() {
     const sorted = [...list].sort((a, b) =>
       (a.name || '').localeCompare(b.name || '')
     );
-    // Assign stable number per country list
+    // Assign stable number per country list (persists across filters)
     const numberMap = new Map<string, number>();
     sorted.forEach((ch, i) => numberMap.set(ch.id, i + 1));
     return { list: sorted, numberMap };
@@ -142,6 +206,7 @@ export function TVModeScreen() {
     }
   }, [channels, currentChannel, play]);
 
+  // Navigate channels WITHOUT auto-playing — confirm with Enter
   const handleChannelSelect = useCallback(
     (channel: UnifiedChannel, index: number) => {
       play(channel, channels, index);
@@ -150,7 +215,6 @@ export function TVModeScreen() {
   );
 
   // Control buttons in order for D-pad navigation
-  // Left: prev, play/pause, next, mute | Right: fav, reload, fullscreen
   const controlActions = useMemo(() => [
     { id: 'prev', action: () => { const idx = channels.indexOf(currentChannel!); if (idx > 0) { play(channels[idx - 1], channels, idx - 1); } } },
     { id: 'playpause', action: togglePlay },
@@ -164,41 +228,46 @@ export function TVModeScreen() {
   // TV remote handlers — D-pad navigation with focus zones
   const remoteHandlers = useMemo(
     () => ({
-      // Down arrow = move UP in channel list (higher index = next channel)
+      // Down arrow
       onDown: () => {
-        if (focusZone === 'channels') {
+        if (focusZone === 'toolbar') {
+          setFocusZone('channels');
+          if (channels.length > 0) setHighlightedIdx(0);
+        } else if (focusZone === 'channels') {
           if (sidebarVisible) {
-            setHighlightedIdx(prev => Math.min(prev + 1, channels.length - 1));
+            if (channels.length > 0) {
+              setHighlightedIdx(prev => prev < 0 ? 0 : Math.min(prev + 1, channels.length - 1));
+            }
           } else {
-            // Fullscreen: zap down and play immediately
             channelDown();
           }
-        } else if (focusZone === 'toolbar') {
+        } else if (focusZone === 'controls' || focusZone === 'star') {
           setFocusZone('channels');
-          setHighlightedIdx(0);
         }
       },
-      // Up arrow = move DOWN in channel list (lower index = prev channel)
+      // Up arrow
       onUp: () => {
         if (focusZone === 'channels') {
           if (sidebarVisible) {
             if (highlightedIdx <= 0) {
               setFocusZone('toolbar');
+              setToolbarFocusIdx(0);
               setHighlightedIdx(-1);
             } else {
               setHighlightedIdx(prev => prev - 1);
             }
           } else {
-            // Fullscreen: zap up and play immediately
             channelUp();
           }
-        } else if (focusZone === 'controls') {
+        } else if (focusZone === 'controls' || focusZone === 'star') {
           setFocusZone('channels');
         }
       },
-      // Right = channels → star → controls
+      // Right
       onRight: () => {
-        if (focusZone === 'channels' && sidebarVisible) {
+        if (focusZone === 'toolbar') {
+          setToolbarFocusIdx(prev => Math.min(prev + 1, 3));
+        } else if (focusZone === 'channels' && sidebarVisible) {
           setFocusZone('star');
         } else if (focusZone === 'star') {
           setFocusZone('controls');
@@ -207,9 +276,11 @@ export function TVModeScreen() {
           setControlFocusIdx(prev => Math.min(prev + 1, controlActions.length - 1));
         }
       },
-      // Left = controls → star → channels
+      // Left
       onLeft: () => {
-        if (focusZone === 'controls') {
+        if (focusZone === 'toolbar') {
+          setToolbarFocusIdx(prev => Math.max(prev - 1, 0));
+        } else if (focusZone === 'controls') {
           if (controlFocusIdx > 0) {
             setControlFocusIdx(prev => prev - 1);
           } else {
@@ -222,9 +293,14 @@ export function TVModeScreen() {
           setFocusZone('channels');
         }
       },
-      // Select/Enter = confirm action
+      // Select/Enter = confirm action in current focus zone
       onSelect: () => {
-        if (focusZone === 'channels' && highlightedIdx >= 0 && highlightedIdx < channels.length) {
+        if (focusZone === 'toolbar') {
+          // 0=Favorites, 1=Popular, 2=Country (no-op, use native picker), 3=Settings
+          if (toolbarFocusIdx === 0) toggleFavoritesOnly();
+          else if (toolbarFocusIdx === 1) toggleMainstreamOnly();
+          else if (toolbarFocusIdx === 3) setSettingsOpen(true);
+        } else if (focusZone === 'channels' && highlightedIdx >= 0 && highlightedIdx < channels.length) {
           play(channels[highlightedIdx], channels, highlightedIdx);
         } else if (focusZone === 'star' && highlightedIdx >= 0 && highlightedIdx < channels.length) {
           toggleFavorite(channels[highlightedIdx]);
@@ -242,28 +318,24 @@ export function TVModeScreen() {
       },
       onPlayPause: togglePlay,
     }),
-    [focusZone, highlightedIdx, controlFocusIdx, channels, sidebarVisible,
+    [focusZone, highlightedIdx, controlFocusIdx, toolbarFocusIdx, channels, sidebarVisible,
      channelUp, channelDown, play, togglePlay, toggleMute, toggleSidebar,
-     toggleFavorite, controlActions, settingsOpen],
+     toggleFavorite, toggleFavoritesOnly, toggleMainstreamOnly, controlActions, settingsOpen],
   );
 
   useTVRemote(remoteHandlers);
 
-  // Scroll highlighted channel into view
+  // Scroll highlighted channel into view using FlatList
   useEffect(() => {
-    if (highlightedIdx >= 0 && scrollRef.current) {
-      const itemHeight = 44;
-      scrollRef.current.scrollTo({ y: Math.max(0, highlightedIdx * itemHeight - 150), animated: true });
+    if (highlightedIdx >= 0 && channels.length > 0 && flatListRef.current) {
+      const idx = Math.min(highlightedIdx, channels.length - 1);
+      flatListRef.current.scrollToIndex({
+        index: idx,
+        animated: true,
+        viewPosition: 0.3,
+      });
     }
-  }, [highlightedIdx]);
-
-  // Scroll active channel into view
-  useEffect(() => {
-    if (currentIdx >= 0 && scrollRef.current) {
-      const itemHeight = 44;
-      scrollRef.current.scrollTo({ y: Math.max(0, currentIdx * itemHeight - 150), animated: true });
-    }
-  }, [currentIdx]);
+  }, [highlightedIdx, channels.length]);
 
   // OSD channel indicator for fullscreen zapping
   const showOsd = useCallback((text: string) => {
@@ -278,14 +350,13 @@ export function TVModeScreen() {
     if (!currentChannel) return;
     const prevId = prevChannelRef.current;
     prevChannelRef.current = currentChannel.id;
-    // Only show OSD if channel actually changed (not on first mount)
     if (prevId && prevId !== currentChannel.id && !sidebarVisible) {
       const num = channelNumberMap.get(currentChannel.id) ?? '';
       showOsd(`${num}  ${currentChannel.name}`);
     }
-  }, [currentChannel, sidebarVisible, showOsd]);
+  }, [currentChannel, sidebarVisible, showOsd, channelNumberMap]);
 
-  // Country options — all countries, no "All" option
+  // Country options
   const countryOptions = useMemo(() => {
     if (!countries) return [];
     return [...countries]
@@ -295,6 +366,32 @@ export function TVModeScreen() {
         label: `${c.flag} ${c.name}`,
       }));
   }, [countries]);
+
+  // FlatList renderItem — memoized
+  const renderChannelItem = useCallback(({ item, index }: { item: UnifiedChannel; index: number }) => {
+    const isActive = currentChannel?.id === item.id;
+    const isHighlighted = focusZone === 'channels' && highlightedIdx === index;
+    return (
+      <ChannelItem
+        channel={item}
+        number={channelNumberMap.get(item.id) ?? index + 1}
+        isActive={isActive}
+        isHighlighted={isHighlighted}
+        isFav={isFavorite(item.id)}
+        starFocused={focusZone === 'star' && highlightedIdx === index}
+        onPress={() => handleChannelSelect(item, index)}
+        onStarPress={() => toggleFavorite(item)}
+      />
+    );
+  }, [currentChannel?.id, focusZone, highlightedIdx, channelNumberMap, isFavorite, handleChannelSelect, toggleFavorite]);
+
+  const getItemLayout = useCallback((_: any, index: number) => ({
+    length: ITEM_HEIGHT,
+    offset: ITEM_HEIGHT * index,
+    index,
+  }), []);
+
+  const keyExtractor = useCallback((item: UnifiedChannel) => item.id, []);
 
   if (isLoading && !channelIndex) {
     return <LoadingSpinner message={t(uiLanguage, 'loading')} fullScreen />;
@@ -315,7 +412,10 @@ export function TVModeScreen() {
             <View style={styles.toolbarSpacer} />
 
             {/* Country picker — globe icon with ISO code */}
-            <View style={styles.countryPickerWrap}>
+            <View style={[
+              styles.countryPickerWrap,
+              focusZone === 'toolbar' && toolbarFocusIdx === 2 && styles.toolbarItemFocused,
+            ]}>
               <GlobeIcon
                 size={24}
                 color={colors.textSecondary}
@@ -347,6 +447,7 @@ export function TVModeScreen() {
               style={({ pressed }) => [
                 styles.toolbarBtn,
                 pressed && styles.toolbarBtnPressed,
+                focusZone === 'toolbar' && toolbarFocusIdx === 3 && styles.toolbarItemFocused,
               ]}
             >
               <GearIcon size={24} color={colors.textSecondary} />
@@ -355,20 +456,26 @@ export function TVModeScreen() {
 
           {/* Filter tags row */}
           <View style={styles.filterRow}>
-            {/* Favorites toggle */}
             <Pressable
               onPress={toggleFavoritesOnly}
-              style={[styles.filterTag, showFavoritesOnly && styles.filterTagActive]}
+              style={[
+                styles.filterTag,
+                showFavoritesOnly && styles.filterTagActive,
+                focusZone === 'toolbar' && toolbarFocusIdx === 0 && styles.toolbarItemFocused,
+              ]}
             >
               <Text style={[styles.filterTagText, showFavoritesOnly && styles.filterTagTextActive]}>
                 {'\u2605'} {t(uiLanguage, 'favorites')}
               </Text>
             </Pressable>
 
-            {/* Popular toggle */}
             <Pressable
               onPress={toggleMainstreamOnly}
-              style={[styles.filterTag, showMainstreamOnly && styles.filterTagActive]}
+              style={[
+                styles.filterTag,
+                showMainstreamOnly && styles.filterTagActive,
+                focusZone === 'toolbar' && toolbarFocusIdx === 1 && styles.toolbarItemFocused,
+              ]}
             >
               <Text style={[styles.filterTagText, showMainstreamOnly && styles.filterTagTextActive]}>
                 {'\u265B'} {t(uiLanguage, 'popular')}
@@ -382,54 +489,30 @@ export function TVModeScreen() {
             <Text style={styles.listCount}>{channels.length}</Text>
           </View>
 
-          {/* Channel list */}
-          <ScrollView ref={scrollRef} style={styles.listScroll} showsVerticalScrollIndicator={false}>
-            {channels.map((ch, idx) => {
-              const isActive = currentChannel?.id === ch.id;
-              const isHighlighted = focusZone === 'channels' && highlightedIdx === idx;
-              return (
-                <Pressable
-                  key={ch.id}
-                  onPress={() => handleChannelSelect(ch, idx)}
-                  style={({ pressed }: { pressed: boolean }) => [
-                    styles.listItem,
-                    isActive && styles.listItemActive,
-                    isHighlighted && styles.listItemHighlighted,
-                    pressed && styles.listItemPressed,
-                  ]}
-                >
-                  <Text style={[styles.itemNumber, (isActive || isHighlighted) && styles.itemTextActive]}>
-                    {channelNumberMap.get(ch.id) ?? ''}
-                  </Text>
-                  {ch.logo && (
-                    <Image source={{ uri: ch.logo }} style={styles.itemLogo} resizeMode="contain" />
-                  )}
-                  <Text
-                    style={[styles.itemName, (isActive || isHighlighted) && styles.itemTextActive]}
-                    numberOfLines={1}
-                  >
-                    {ch.name || 'Unknown'}
-                  </Text>
-                  <Pressable
-                    onPress={() => toggleFavorite(ch)}
-                    style={[
-                      styles.itemStar,
-                      focusZone === 'star' && highlightedIdx === idx && styles.itemStarFocused,
-                    ]}
-                    hitSlop={8}
-                  >
-                    <Text style={[styles.itemStarIcon, isFavorite(ch.id) && styles.itemStarActive]}>
-                      {isFavorite(ch.id) ? '\u2605' : '\u2606'}
-                    </Text>
-                  </Pressable>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          {/* Channel list — FlatList for performance */}
+          <FlatList
+            ref={flatListRef}
+            data={channels}
+            renderItem={renderChannelItem}
+            keyExtractor={keyExtractor}
+            getItemLayout={getItemLayout}
+            style={styles.listScroll}
+            showsVerticalScrollIndicator={false}
+            initialNumToRender={20}
+            maxToRenderPerBatch={15}
+            windowSize={7}
+            removeClippedSubviews={Platform.OS !== 'web'}
+            onScrollToIndexFailed={(info) => {
+              flatListRef.current?.scrollToOffset({
+                offset: info.averageItemLength * info.index,
+                animated: true,
+              });
+            }}
+          />
         </View>
       )}
 
-      {/* Player section */}
+      {/* Player section — flex:1 fills remaining space, never behind sidebar */}
       <View style={styles.playerSection}>
         {currentChannel ? (
           <>
@@ -438,7 +521,7 @@ export function TVModeScreen() {
             {/* Controls bar — always visible when sidebar is open */}
             {sidebarVisible && (
               <View style={styles.controlBarWrap}>
-                <View style={styles.overlayGradient} />
+                <View style={[styles.overlayGradient, Platform.OS === 'web' && { background: 'linear-gradient(transparent, rgba(0,0,0,0.85))' } as any]} />
                 <View style={styles.controlBar}>
                   <View style={styles.controlBarLeft}>
                     {/* Prev — idx 0 */}
@@ -497,6 +580,7 @@ export function TVModeScreen() {
                   {isBuffering && (
                     <Text style={styles.controlBarStatus}>{t(uiLanguage, 'buffering')}</Text>
                   )}
+
                   {playerError && (
                     <Text style={styles.controlBarError}>{playerError}</Text>
                   )}
@@ -546,7 +630,7 @@ export function TVModeScreen() {
 
             {/* Fullscreen: OSD channel number (zapping style) */}
             {!sidebarVisible && channelOsd && (
-              <View style={styles.osd}>
+              <View style={styles.osd} pointerEvents="none">
                 <Text style={styles.osdText}>{channelOsd}</Text>
               </View>
             )}
@@ -582,7 +666,6 @@ export function TVModeScreen() {
           setUpdateInfo(info.hasUpdate ? info : null);
           setUpdateChecking(false);
           if (!info.hasUpdate) {
-            // Flash "up to date" briefly
             setUpdateInfo({ version: APP_VERSION, downloadUrl: '', hasUpdate: false });
             setTimeout(() => setUpdateInfo(null), 2000);
           }
@@ -697,12 +780,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 
-  // Sidebar
+  // Sidebar — fixed width, never overlaps player
   sidebar: {
     width: 280,
     backgroundColor: colors.surface,
     borderRightWidth: 1,
     borderRightColor: colors.surfaceHighlight,
+    zIndex: 1,
   },
   toolbar: {
     flexDirection: 'row',
@@ -733,11 +817,6 @@ const styles = StyleSheet.create({
   },
   toolbarBtnPressed: {
     opacity: 0.7,
-  },
-  toolbarIcon: {
-    fontSize: 24,
-    color: colors.textSecondary,
-    lineHeight: 24,
   },
 
   // Filter tags
@@ -777,8 +856,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
   },
+  toolbarItemFocused: {
+    borderWidth: 2,
+    borderColor: colors.focusBorder,
+    borderRadius: 8,
+  },
 
-  // Settings (kept for pickerFallback)
   pickerFallback: {
     ...typography.caption,
     color: colors.textSecondary,
@@ -812,7 +895,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
-    height: 44,
+    height: ITEM_HEIGHT,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.surfaceLight,
   },
@@ -829,13 +912,25 @@ const styles = StyleSheet.create({
   listItemPressed: {
     backgroundColor: colors.surfaceLight,
   },
+  itemNumberBubble: {
+    minWidth: 28,
+    height: 22,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    paddingHorizontal: 4,
+  },
+  itemNumberBubbleActive: {
+    backgroundColor: colors.accent,
+  },
   itemNumber: {
     ...typography.caption,
     color: colors.textMuted,
-    width: 26,
-    textAlign: 'right',
-    marginRight: spacing.xs,
     fontSize: 11,
+    textAlign: 'center',
+    fontWeight: '600',
   },
   itemLogo: {
     width: 24,
@@ -855,9 +950,10 @@ const styles = StyleSheet.create({
   },
   itemStar: {
     paddingLeft: spacing.xs,
+    paddingRight: 4,
   },
   itemStarIcon: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textMuted,
   },
   itemStarActive: {
@@ -870,7 +966,7 @@ const styles = StyleSheet.create({
     borderColor: colors.focusBorder,
   },
 
-  // Player
+  // Player — fills remaining space
   playerSection: {
     flex: 1,
     backgroundColor: '#000',
@@ -886,12 +982,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
 
-  // Control bar — fixed at bottom when sidebar visible
+  // Control bar — fixed at bottom of player section
   controlBarWrap: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
+    zIndex: 10,
   } as any,
   overlayGradient: {
     position: 'absolute',
@@ -899,7 +996,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 80,
-    background: 'linear-gradient(transparent, rgba(0,0,0,0.85))',
   } as any,
   controlBar: {
     flexDirection: 'row',
@@ -921,7 +1017,7 @@ const styles = StyleSheet.create({
   },
   ctrlBtn: {
     padding: 8,
-    borderRadius: 4,
+    borderRadius: 6,
   },
   ctrlBtnPressed: {
     backgroundColor: 'rgba(255,255,255,0.15)',
@@ -969,6 +1065,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 6,
+    zIndex: 20,
   } as any,
   osdText: {
     color: '#fff',
@@ -984,6 +1081,7 @@ const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 6,
     backgroundColor: 'rgba(0,0,0,0.3)',
+    zIndex: 20,
   } as any,
   fsExitBtnPressed: {
     backgroundColor: 'rgba(0,0,0,0.6)',
@@ -999,6 +1097,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 100,
   } as any,
   modalContent: {
     backgroundColor: colors.surface,

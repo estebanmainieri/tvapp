@@ -58,11 +58,15 @@ function Video({
 
     if (isHls && Hls.isSupported()) {
       const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
+        enableWorker: false, // save threads on low-power TV boxes
+        lowLatencyMode: false, // prefer stability over latency
+        maxBufferLength: 15, // seconds — reduce memory usage
+        maxMaxBufferLength: 30,
+        maxBufferSize: 30 * 1000 * 1000, // 30MB max buffer
+        startLevel: -1, // auto-select quality
+        abrEwmaDefaultEstimate: 500000, // start with 500kbps estimate
         xhrSetup: (xhr) => {
-          // URLs are already rewritten by the proxy's m3u8 rewriter,
-          // so no need to rewrite here. Just set custom headers if any.
+          xhr.timeout = 15000; // 15s timeout per request
           if (source.headers) {
             Object.entries(source.headers).forEach(([key, value]) => {
               try { xhr.setRequestHeader(key, value); } catch (_) {}

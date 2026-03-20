@@ -32,8 +32,10 @@ export function useIPTVChannels() {
       }
     },
     staleTime: STALE_TIME,
-    gcTime: Infinity,
+    gcTime: 2 * 60 * 60 * 1000, // 2 hours — free memory on low-end devices
     enabled: initialized,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
 
@@ -42,7 +44,8 @@ export function useIPTVCountries() {
     queryKey: ['iptv', 'countries'],
     queryFn: fetchCountries,
     staleTime: STALE_TIME,
-    gcTime: Infinity,
+    gcTime: 2 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -51,6 +54,7 @@ export function useIPTVLanguages() {
     queryKey: ['iptv', 'languages'],
     queryFn: fetchLanguages,
     staleTime: STALE_TIME,
-    gcTime: Infinity,
+    gcTime: 2 * 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 }
