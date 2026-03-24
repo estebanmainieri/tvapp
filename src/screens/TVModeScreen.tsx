@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useMemo, useRef, useState, memo } from 'react';
-import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal, ActivityIndicator, ScrollView, TextInput, Dimensions } from 'react-native';
+import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal, ActivityIndicator, ScrollView, TextInput, useWindowDimensions } from 'react-native';
 import { VideoPlayer } from '../components/player/VideoPlayer';
 import { useIPTVChannels, useIPTVCountries } from '../hooks/useIPTVChannels';
 import { usePlayerStore } from '../hooks/usePlayerStore';
@@ -515,6 +515,7 @@ export function TVModeScreen() {
   const [channelOsd, setChannelOsd] = useState<string | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const { height: windowHeight } = useWindowDimensions();
 
   // Focus zones for D-pad navigation: toolbar > channels > star > controls
   const [focusZone, setFocusZone] = useState<'channels' | 'star' | 'controls' | 'toolbar'>('channels');
@@ -839,7 +840,7 @@ export function TVModeScreen() {
     <View style={styles.container}>
       {/* Left sidebar: toolbar + filters + channel list */}
       {sidebarVisible && (
-        <View style={styles.sidebar}>
+        <View style={[styles.sidebar, { height: windowHeight }]}>
           {/* Toolbar: Logo ... Country flag + Config */}
           <View style={styles.toolbar}>
             <Text style={styles.logo}>Tve<Text style={styles.logoPlus}>+</Text></Text>
@@ -1133,14 +1134,14 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 
-  // Sidebar — fixed width, explicit height for Android TV compatibility
+  // Sidebar — fixed width, height set dynamically via inline style for Android TV
   sidebar: {
     width: 280,
-    height: Dimensions.get('window').height,
     backgroundColor: colors.surface,
     borderRightWidth: 1,
     borderRightColor: colors.surfaceHighlight,
     zIndex: 2,
+    overflow: 'hidden' as const,
   },
   toolbar: {
     flexDirection: 'row',
