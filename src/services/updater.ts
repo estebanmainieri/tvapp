@@ -4,7 +4,9 @@ import { APP_VERSION } from '../version';
 const GITHUB_OWNER = 'estebanmainieri';
 const GITHUB_REPO = 'tvapp';
 const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
-const LATEST_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+// Use /releases (sorted by date desc) instead of /releases/latest,
+// because "latest" points to the last full APK release, not OTA updates.
+const RELEASES_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases?per_page=5`;
 
 export interface UpdateInfo {
   version: string;
@@ -28,12 +30,18 @@ function compareVersions(a: string, b: string): number {
 export async function checkForUpdate(): Promise<UpdateInfo> {
   try {
     console.log('[Updater] Checking for updates... Current version:', APP_VERSION);
-    const res = await fetch(LATEST_URL, {
+    const res = await fetch(RELEASES_URL, {
       headers: { Accept: 'application/vnd.github.v3+json' },
     });
     if (!res.ok) throw new Error(`GitHub API ${res.status}`);
 
-    const release = await res.json();
+    const releases = await res.json();
+    if (!Array.isArray(releases) || releases.length === 0) {
+      throw new Error('No releases found');
+    }
+
+    // Find the newest release by version (first in list = most recent by date)
+    const release = releases[0];
     const latestVersion = (release.tag_name || '').replace(/^v/, '');
     const currentVersion = APP_VERSION;
 
@@ -58,14 +66,22 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
 
     let downloadUrl = '';
     let bundleUrl = '';
-    if (hasUpdate && release.assets) {
-      for (const a of release.assets as any[]) {
-        if (a.name.endsWith('.apk')) {
-          downloadUrl = a.browser_download_url;
-        }
+    if (hasUpdate) {
+      // Look for bundle in the newest release
+      for (const a of (release.assets || []) as any[]) {
         if (a.name === 'index.android.bundle') {
           bundleUrl = a.browser_download_url;
         }
+      }
+      // Look for APK in any of the recent releases (might be in an older one)
+      for (const r of releases) {
+        for (const a of (r.assets || []) as any[]) {
+          if (a.name.endsWith('.apk')) {
+            downloadUrl = a.browser_download_url;
+            break;
+          }
+        }
+        if (downloadUrl) break;
       }
       console.log('[Updater] APK URL:', downloadUrl || 'none');
       console.log('[Updater] Bundle URL:', bundleUrl || 'none');

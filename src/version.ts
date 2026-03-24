@@ -1,2 +1,2 @@
 // Auto-updated by pre-commit hook
-export const APP_VERSION = '0.3.18';
+export const APP_VERSION = '0.4.1';

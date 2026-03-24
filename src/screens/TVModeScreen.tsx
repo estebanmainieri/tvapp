@@ -221,13 +221,14 @@ const ChannelItemConnected = memo(function ChannelItemConnected({
 const modalLabelWithMargin = [{ marginTop: spacing.md }];
 
 const SettingsModal = memo(function SettingsModal({
-  uiLanguage, setUiLanguage, updateInfo, setUpdateInfo, onClose,
+  uiLanguage, setUiLanguage, updateInfo, setUpdateInfo, onClose, displayVersion,
 }: {
   uiLanguage: string;
   setUiLanguage: (lang: string) => void;
   updateInfo: UpdateInfo | null;
   setUpdateInfo: (info: UpdateInfo | null) => void;
   onClose: () => void;
+  displayVersion: string;
 }) {
   const [cacheCleared, setCacheCleared] = useState(false);
   const [updateChecking, setUpdateChecking] = useState(false);
@@ -1258,6 +1259,7 @@ export function TVModeScreen() {
           updateInfo={updateInfo}
           setUpdateInfo={setUpdateInfo}
           onClose={() => setSettingsOpen(false)}
+          displayVersion={displayVersion}
         />
       )}
     </View>
