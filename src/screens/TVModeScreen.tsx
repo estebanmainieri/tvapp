@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useMemo, useRef, useState, memo } from 'react';
-import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal, ActivityIndicator, ScrollView, TextInput } from 'react-native';
+import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal, ActivityIndicator, ScrollView, TextInput, Dimensions } from 'react-native';
 import { VideoPlayer } from '../components/player/VideoPlayer';
 import { useIPTVChannels, useIPTVCountries } from '../hooks/useIPTVChannels';
 import { usePlayerStore } from '../hooks/usePlayerStore';
@@ -1133,13 +1133,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 
-  // Sidebar — fixed width, never overlaps player
+  // Sidebar — fixed width, explicit height for Android TV compatibility
   sidebar: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
     width: 280,
+    height: Dimensions.get('window').height,
     backgroundColor: colors.surface,
     borderRightWidth: 1,
     borderRightColor: colors.surfaceHighlight,
@@ -1394,7 +1391,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   } as any,
   playerWithSidebar: {
-    marginLeft: 280,
+    // No marginLeft needed — sidebar is in normal flow, not absolute
   },
   noChannel: {
     flex: 1,
