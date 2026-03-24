@@ -230,14 +230,20 @@ const SettingsModal = memo(function SettingsModal({
   const [cacheCleared, setCacheCleared] = useState(false);
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateApplying, setUpdateApplying] = useState(false);
+  const [updateError, setUpdateError] = useState('');
+
+  // D-pad focus management for TV
+  const [focusIdx, setFocusIdx] = useState(0);
+  const langIdx = UI_LANGUAGES.findIndex(l => l.value === uiLanguage);
+
+  // Modal items: 0=language, 1=check/apply update, 2=clear cache, 3=close
+  const ITEM_COUNT = 4;
 
   const handleClearCache = useCallback(async () => {
     await AsyncStorage.clear();
     setCacheCleared(true);
     setTimeout(() => setCacheCleared(false), 2000);
   }, []);
-
-  const [updateError, setUpdateError] = useState('');
 
   const handleCheckUpdate = useCallback(async () => {
     setUpdateChecking(true);
@@ -267,18 +273,67 @@ const SettingsModal = memo(function SettingsModal({
     }
   }, [updateInfo?.downloadUrl]);
 
+  // Handle D-pad inside modal (TV remote)
+  useTVRemote(useMemo(() => ({
+    onUp: () => setFocusIdx(prev => Math.max(prev - 1, 0)),
+    onDown: () => setFocusIdx(prev => Math.min(prev + 1, ITEM_COUNT - 1)),
+    onLeft: () => {
+      if (focusIdx === 0) {
+        // Cycle language backward
+        const prevIdx = langIdx <= 0 ? UI_LANGUAGES.length - 1 : langIdx - 1;
+        setUiLanguage(UI_LANGUAGES[prevIdx].value);
+      }
+    },
+    onRight: () => {
+      if (focusIdx === 0) {
+        // Cycle language forward
+        const nextIdx = langIdx >= UI_LANGUAGES.length - 1 ? 0 : langIdx + 1;
+        setUiLanguage(UI_LANGUAGES[nextIdx].value);
+      }
+    },
+    onSelect: () => {
+      if (focusIdx === 0) {
+        // Cycle language forward on select too
+        const nextIdx = langIdx >= UI_LANGUAGES.length - 1 ? 0 : langIdx + 1;
+        setUiLanguage(UI_LANGUAGES[nextIdx].value);
+      } else if (focusIdx === 1) {
+        if (updateInfo?.hasUpdate) {
+          handleApplyUpdate();
+        } else {
+          handleCheckUpdate();
+        }
+      } else if (focusIdx === 2) {
+        handleClearCache();
+      } else if (focusIdx === 3) {
+        onClose();
+      }
+    },
+    onBack: () => { onClose(); return true; },
+    onMenu: () => { onClose(); },
+  }), [focusIdx, langIdx, uiLanguage, updateInfo, handleApplyUpdate, handleCheckUpdate, handleClearCache, onClose, setUiLanguage]));
+
   const modalInner = (
     <View style={styles.modalContent}>
       <View style={styles.modalHeader}>
         <Text style={styles.modalTitle}>{t(uiLanguage, 'settings')}</Text>
-        <Pressable onPress={onClose} style={styles.modalClose}>
+        <Pressable onPress={onClose} style={[styles.modalClose, focusIdx === 3 && styles.modalItemFocused]}>
           <Text style={styles.modalCloseIcon}>{'\u2715'}</Text>
         </Pressable>
       </View>
 
       <View style={styles.modalBody}>
         <Text style={styles.modalLabel}>{t(uiLanguage, 'language')}</Text>
-        <SelectPicker value={uiLanguage} onChange={setUiLanguage} options={UI_LANGUAGES} />
+        {Platform.OS === 'web' ? (
+          <SelectPicker value={uiLanguage} onChange={setUiLanguage} options={UI_LANGUAGES} />
+        ) : (
+          <View style={[styles.modalLangPicker, focusIdx === 0 && styles.modalItemFocused]}>
+            <Text style={styles.modalLangArrow}>{'\u25C0'}</Text>
+            <Text style={styles.modalLangValue}>
+              {UI_LANGUAGES.find(l => l.value === uiLanguage)?.label || uiLanguage}
+            </Text>
+            <Text style={styles.modalLangArrow}>{'\u25B6'}</Text>
+          </View>
+        )}
 
         <Text style={[styles.modalLabel, ...modalLabelWithMargin]}>
           {t(uiLanguage, 'checkUpdates')}
@@ -287,7 +342,7 @@ const SettingsModal = memo(function SettingsModal({
           <Pressable
             onPress={handleApplyUpdate}
             disabled={updateApplying}
-            style={({ pressed }) => [styles.modalUpdateBtn, pressed && styles.modalUpdateBtnPressed]}
+            style={({ pressed }) => [styles.modalUpdateBtn, pressed && styles.modalUpdateBtnPressed, focusIdx === 1 && styles.modalItemFocused]}
           >
             <Text style={styles.modalUpdateBtnText}>
               {updateApplying
@@ -299,7 +354,7 @@ const SettingsModal = memo(function SettingsModal({
           <Pressable
             onPress={handleCheckUpdate}
             disabled={updateChecking}
-            style={({ pressed }) => [styles.modalCheckBtn, pressed && styles.modalCheckBtnPressed]}
+            style={({ pressed }) => [styles.modalCheckBtn, pressed && styles.modalCheckBtnPressed, focusIdx === 1 && styles.modalItemFocused]}
           >
             <Text style={styles.modalCheckBtnText}>
               {updateChecking
@@ -319,7 +374,7 @@ const SettingsModal = memo(function SettingsModal({
         </Text>
         <Pressable
           onPress={handleClearCache}
-          style={({ pressed }) => [styles.modalDangerBtn, pressed && styles.modalDangerBtnPressed]}
+          style={({ pressed }) => [styles.modalDangerBtn, pressed && styles.modalDangerBtnPressed, focusIdx === 2 && styles.modalItemFocused]}
         >
           <Text style={styles.modalDangerBtnText}>
             {cacheCleared ? t(uiLanguage, 'clearCacheDone') : t(uiLanguage, 'clearCache')}
@@ -339,9 +394,9 @@ const SettingsModal = memo(function SettingsModal({
   }
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
+      <View style={styles.modalOverlay}>
         {modalInner}
-      </Pressable>
+      </View>
     </Modal>
   );
 });
@@ -504,6 +559,7 @@ export function TVModeScreen() {
     () => ({
       onDown: () => {
         const s = stateRef.current;
+        if (s.settingsOpen) return; // modal handles its own input
         if (s.focusZone === 'toolbar') {
           setFocusZone('channels');
           if (s.channels.length > 0) setHighlightedIdx(0);
@@ -521,6 +577,7 @@ export function TVModeScreen() {
       },
       onUp: () => {
         const s = stateRef.current;
+        if (s.settingsOpen) return;
         if (s.focusZone === 'channels') {
           if (s.sidebarVisible) {
             if (s.highlightedIdx <= 0) {
@@ -539,6 +596,7 @@ export function TVModeScreen() {
       },
       onRight: () => {
         const s = stateRef.current;
+        if (s.settingsOpen) return;
         if (s.focusZone === 'toolbar') {
           setToolbarFocusIdx(prev => Math.min(prev + 1, 3));
         } else if (s.focusZone === 'channels' && s.sidebarVisible) {
@@ -552,6 +610,7 @@ export function TVModeScreen() {
       },
       onLeft: () => {
         const s = stateRef.current;
+        if (s.settingsOpen) return;
         if (s.focusZone === 'toolbar') {
           setToolbarFocusIdx(prev => Math.max(prev - 1, 0));
         } else if (s.focusZone === 'controls') {
@@ -569,6 +628,7 @@ export function TVModeScreen() {
       },
       onSelect: () => {
         const s = stateRef.current;
+        if (s.settingsOpen) return;
         const a = actionsRef.current;
         if (s.focusZone === 'toolbar') {
           if (s.toolbarFocusIdx === 0) a.toggleFavoritesOnly();
@@ -584,6 +644,7 @@ export function TVModeScreen() {
       },
       onMenu: () => {
         const s = stateRef.current;
+        if (s.settingsOpen) return;
         if (!s.sidebarVisible) {
           actionsRef.current.toggleSidebar();
           setFocusZone('channels');
@@ -593,10 +654,7 @@ export function TVModeScreen() {
       },
       onBack: () => {
         const s = stateRef.current;
-        if (s.settingsOpen) {
-          setSettingsOpen(false);
-          return true;
-        }
+        if (s.settingsOpen) return true; // modal handles its own back
         if (!s.sidebarVisible) {
           actionsRef.current.toggleSidebar();
           setFocusZone('channels');
@@ -986,7 +1044,7 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: colors.surfaceHighlight,
     zIndex: 1,
-    alignSelf: 'stretch',
+    height: '100%',
   },
   toolbar: {
     flexDirection: 'row',
@@ -1404,10 +1462,38 @@ const styles = StyleSheet.create({
   },
   modalClose: {
     padding: 4,
+    borderRadius: 4,
   },
   modalCloseIcon: {
     fontSize: 16,
     color: colors.textMuted,
+  },
+  modalItemFocused: {
+    borderColor: colors.accent,
+    borderWidth: 2,
+  },
+  modalLangPicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surfaceHighlight,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  modalLangValue: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+    textAlign: 'center',
+  },
+  modalLangArrow: {
+    color: colors.textMuted,
+    fontSize: 12,
+    paddingHorizontal: 4,
   },
   modalBody: {
     padding: spacing.md,
