@@ -840,7 +840,7 @@ export function TVModeScreen() {
     <View style={styles.container}>
       {/* Left sidebar: toolbar + filters + channel list */}
       {sidebarVisible && (
-        <View style={[styles.sidebar, { height: windowHeight }]}>
+        <View style={[styles.sidebar, { height: windowHeight }]} collapsable={false}>
           {/* Toolbar: Logo ... Country flag + Config */}
           <View style={styles.toolbar}>
             <Text style={styles.logo}>Tve<Text style={styles.logoPlus}>+</Text></Text>
@@ -938,7 +938,7 @@ export function TVModeScreen() {
             renderItem={renderChannelItem}
             keyExtractor={keyExtractor}
             getItemLayout={getItemLayout}
-            style={styles.listScroll}
+            style={{ flex: 1, flexGrow: 1, height: windowHeight - 140 }}
             showsVerticalScrollIndicator={false}
             initialNumToRender={20}
             maxToRenderPerBatch={15}
@@ -1134,7 +1134,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
 
-  // Sidebar — fixed width, height set dynamically via inline style for Android TV
+  // Sidebar — fixed width
   sidebar: {
     width: 280,
     backgroundColor: colors.surface,
