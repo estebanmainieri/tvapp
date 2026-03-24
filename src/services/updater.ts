@@ -1,4 +1,4 @@
-import { Platform, NativeModules, AppState } from 'react-native';
+import { Platform, NativeModules, AppState, Alert } from 'react-native';
 import { APP_VERSION } from '../version';
 
 const GITHUB_OWNER = 'estebanmainieri';
@@ -10,6 +10,7 @@ export interface UpdateInfo {
   version: string;
   downloadUrl: string;
   hasUpdate: boolean;
+  error?: string;
 }
 
 function compareVersions(a: string, b: string): number {
@@ -24,6 +25,7 @@ function compareVersions(a: string, b: string): number {
 
 export async function checkForUpdate(): Promise<UpdateInfo> {
   try {
+    console.log('[Updater] Checking for updates... Current version:', APP_VERSION);
     const res = await fetch(LATEST_URL, {
       headers: { Accept: 'application/vnd.github.v3+json' },
     });
@@ -33,6 +35,7 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
     const latestVersion = (release.tag_name || '').replace(/^v/, '');
     const currentVersion = APP_VERSION;
 
+    console.log('[Updater] Latest version:', latestVersion, 'Current:', currentVersion);
     const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
 
     let downloadUrl = '';
@@ -42,19 +45,42 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
       );
       if (apkAsset) {
         downloadUrl = apkAsset.browser_download_url;
+        console.log('[Updater] APK URL:', downloadUrl);
       }
     }
 
     return { version: latestVersion, downloadUrl, hasUpdate };
-  } catch (err) {
-    console.warn('Update check failed:', err);
-    return { version: APP_VERSION, downloadUrl: '', hasUpdate: false };
+  } catch (err: any) {
+    console.warn('[Updater] Check failed:', err?.message || err);
+    return { version: APP_VERSION, downloadUrl: '', hasUpdate: false, error: err?.message || 'Check failed' };
+  }
+}
+
+async function ensureInstallPermission(): Promise<boolean> {
+  if (Platform.OS !== 'android') return true;
+
+  const { AppUpdater } = NativeModules;
+  if (!AppUpdater?.canInstallApks) return true;
+
+  try {
+    const canInstall = await AppUpdater.canInstallApks();
+    if (canInstall) return true;
+
+    // Open settings so user can grant permission
+    console.log('[Updater] Requesting install permission...');
+    await AppUpdater.openInstallPermissionSettings();
+
+    // Give user time to toggle the setting, then re-check
+    await new Promise<void>(r => setTimeout(r, 3000));
+    return await AppUpdater.canInstallApks();
+  } catch (e) {
+    console.warn('[Updater] Permission check failed:', e);
+    return true; // proceed anyway, let Android handle it
   }
 }
 
 export async function applyUpdate(downloadUrl: string): Promise<void> {
   if (Platform.OS === 'web') {
-    // Web: just reload the page
     (window as any).location.reload();
     return;
   }
@@ -64,6 +90,13 @@ export async function applyUpdate(downloadUrl: string): Promise<void> {
     if (!AppUpdater) {
       throw new Error('AppUpdater native module not available');
     }
+
+    const hasPermission = await ensureInstallPermission();
+    if (!hasPermission) {
+      throw new Error('Install permission not granted. Go to Settings > Apps > Tve+ > Install unknown apps');
+    }
+
+    console.log('[Updater] Starting download and install...');
     await AppUpdater.downloadAndInstall(downloadUrl);
   }
 }
@@ -83,7 +116,7 @@ export function startBackgroundUpdateCheck(
   // Check immediately
   doCheck();
 
-  // Then every hour
+  // Then periodically
   checkTimer = setInterval(doCheck, CHECK_INTERVAL);
 
   // Also check when app comes back from background (native only)

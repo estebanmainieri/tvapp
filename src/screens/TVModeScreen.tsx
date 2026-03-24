@@ -237,12 +237,18 @@ const SettingsModal = memo(function SettingsModal({
     setTimeout(() => setCacheCleared(false), 2000);
   }, []);
 
+  const [updateError, setUpdateError] = useState('');
+
   const handleCheckUpdate = useCallback(async () => {
     setUpdateChecking(true);
+    setUpdateError('');
     const info = await checkForUpdate();
     setUpdateInfo(info.hasUpdate ? info : null);
     setUpdateChecking(false);
-    if (!info.hasUpdate) {
+    if (info.error) {
+      setUpdateError(info.error);
+      setTimeout(() => setUpdateError(''), 5000);
+    } else if (!info.hasUpdate) {
       setUpdateInfo({ version: APP_VERSION, downloadUrl: '', hasUpdate: false });
       setTimeout(() => setUpdateInfo(null), 2000);
     }
@@ -251,10 +257,12 @@ const SettingsModal = memo(function SettingsModal({
   const handleApplyUpdate = useCallback(async () => {
     if (!updateInfo?.downloadUrl) return;
     setUpdateApplying(true);
+    setUpdateError('');
     try {
       await applyUpdate(updateInfo.downloadUrl);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Update failed:', err);
+      setUpdateError(err?.message || 'Update failed');
       setUpdateApplying(false);
     }
   }, [updateInfo?.downloadUrl]);
@@ -302,6 +310,9 @@ const SettingsModal = memo(function SettingsModal({
             </Text>
           </Pressable>
         )}
+        {updateError ? (
+          <Text style={styles.modalErrorText}>{updateError}</Text>
+        ) : null}
 
         <Text style={[styles.modalLabel, ...modalLabelWithMargin]}>
           {t(uiLanguage, 'clearCache')}
@@ -361,9 +372,28 @@ export function TVModeScreen() {
   // Toolbar items: 0=Favorites, 1=Popular, 2=Country, 3=Settings
   const [toolbarFocusIdx, setToolbarFocusIdx] = useState(0);
 
-  // Background update check
+  const [updateBanner, setUpdateBanner] = useState<string | null>(null);
+  const [isAutoUpdating, setIsAutoUpdating] = useState(false);
+
+  // Background update check — shows banner and auto-applies
   useEffect(() => {
-    startBackgroundUpdateCheck((info) => setUpdateInfo(info));
+    startBackgroundUpdateCheck(async (info) => {
+      setUpdateInfo(info);
+      setUpdateBanner(`v${info.version} disponible`);
+
+      // Auto-apply update on Android TV
+      if (Platform.OS === 'android' && info.downloadUrl) {
+        try {
+          setIsAutoUpdating(true);
+          setUpdateBanner(`Descargando v${info.version}...`);
+          await applyUpdate(info.downloadUrl);
+        } catch (err: any) {
+          console.warn('[Updater] Auto-update failed:', err);
+          setUpdateBanner(`Update v${info.version} - abrir Settings`);
+          setIsAutoUpdating(false);
+        }
+      }
+    });
     return () => stopBackgroundUpdateCheck();
   }, []);
 
@@ -903,6 +933,14 @@ export function TVModeScreen() {
               </View>
             )}
 
+            {/* Update banner */}
+            {updateBanner && (
+              <View style={styles.updateBanner} pointerEvents="none">
+                {isAutoUpdating && <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />}
+                <Text style={styles.updateBannerText}>{updateBanner}</Text>
+              </View>
+            )}
+
             {/* Fullscreen: exit button (subtle, top-left) */}
             {!sidebarVisible && (
               <Pressable
@@ -948,6 +986,7 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderRightColor: colors.surfaceHighlight,
     zIndex: 1,
+    alignSelf: 'stretch',
   },
   toolbar: {
     flexDirection: 'row',
@@ -1299,6 +1338,23 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     letterSpacing: 2,
   } as any,
+  updateBanner: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0, 150, 136, 0.9)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 6,
+    zIndex: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  updateBannerText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   fsExitBtn: {
     position: 'absolute',
     top: 12,
@@ -1380,6 +1436,11 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textSecondary,
     fontSize: 13,
+  },
+  modalErrorText: {
+    color: '#ff6b6b',
+    fontSize: 12,
+    marginTop: 6,
   },
   modalUpdateBtn: {
     paddingHorizontal: 14,
