@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useMemo, useRef, useState, memo } from 'react';
-import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal, ActivityIndicator, ScrollView, TextInput, useWindowDimensions, NativeModules } from 'react-native';
+import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, ActivityIndicator, ScrollView, TextInput, useWindowDimensions, NativeModules } from 'react-native';
 import { VideoPlayer } from '../components/player/VideoPlayer';
 import { MulticamPlayer } from '../components/player/MulticamPlayer';
 import { useIPTVChannels, useIPTVCountries } from '../hooks/useIPTVChannels';
@@ -275,7 +275,7 @@ const SettingsModal = memo(function SettingsModal({
   }, [setUpdateInfo]);
 
   const handleApplyUpdate = useCallback(async () => {
-    if (!updateInfo?.downloadUrl) return;
+    if (!updateInfo?.downloadUrl && !updateInfo?.bundleUrl) return;
     setUpdateApplying(true);
     setUpdateError('');
     try {
@@ -285,7 +285,7 @@ const SettingsModal = memo(function SettingsModal({
       setUpdateError(err?.message || 'Update failed');
       setUpdateApplying(false);
     }
-  }, [updateInfo?.downloadUrl]);
+  }, [updateInfo]);
 
   const handleAddSource = useCallback(() => {
     if (newSourceName.trim() && newSourceUrl.trim()) {
@@ -487,16 +487,8 @@ const SettingsModal = memo(function SettingsModal({
     </View>
   );
 
-  if (Platform.OS === 'web') {
-    return <View style={styles.modalOverlay}>{modalInner}</View>;
-  }
-  return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalOverlay}>
-        {modalInner}
-      </View>
-    </Modal>
-  );
+  // Use absolute overlay on all platforms — Modal crashes on Android TV
+  return <View style={styles.modalOverlay}>{modalInner}</View>;
 });
 
 const ITEM_HEIGHT = 44;
@@ -863,8 +855,6 @@ export function TVModeScreen() {
         } else if (!s.sidebarVisible) {
           actionsRef.current.toggleSidebar();
           setFocusZone('channels');
-        } else if (s.settingsOpen) {
-          setSettingsOpen(false);
         }
       },
       onBack: () => {
@@ -1127,8 +1117,10 @@ export function TVModeScreen() {
               focusedSlot={multicamFocusedSlot}
               onSlotPress={(idx) => {
                 setMulticamFocusedSlot(idx);
-                setMulticamPickerIdx(0);
-                setMulticamPickerOpen(true);
+                if (Platform.OS === 'web') {
+                  setMulticamPickerIdx(0);
+                  setMulticamPickerOpen(true);
+                }
               }}
             />
             {/* Channel picker overlay */}
@@ -1147,6 +1139,7 @@ export function TVModeScreen() {
                     <Pressable
                       key={ch.id}
                       onPress={() => {
+                        if (Platform.OS !== 'web') return;
                         setMulticamSlots(prev => {
                           const next = [...prev];
                           next[multicamFocusedSlot] = ch;
