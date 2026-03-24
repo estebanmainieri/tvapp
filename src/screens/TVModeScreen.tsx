@@ -759,9 +759,15 @@ export function TVModeScreen() {
           else if (s.toolbarFocusIdx === 1) a.toggleMainstreamOnly();
           else if (s.toolbarFocusIdx === 3) setSettingsOpen(true);
         } else if (s.focusZone === 'channels' && s.highlightedIdx >= 0 && s.highlightedIdx < s.channels.length) {
-          a.play(s.channels[s.highlightedIdx], s.channels, s.highlightedIdx);
+          // On Android TV, native Pressable onPress handles channel selection correctly.
+          // Only use onSelect for web where there's no native focus system.
+          if (Platform.OS === 'web') {
+            a.play(s.channels[s.highlightedIdx], s.channels, s.highlightedIdx);
+          }
         } else if (s.focusZone === 'star' && s.highlightedIdx >= 0 && s.highlightedIdx < s.channels.length) {
-          a.toggleFavorite(s.channels[s.highlightedIdx]);
+          if (Platform.OS === 'web') {
+            a.toggleFavorite(s.channels[s.highlightedIdx]);
+          }
         } else if (s.focusZone === 'controls') {
           a.controlActions[s.controlFocusIdx]?.action();
         }
