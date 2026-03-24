@@ -46,6 +46,7 @@ export function buildChannelIndex(
   rawChannels: IPTVRawChannel[],
   rawStreams: IPTVRawStream[],
   countryFilter?: string,
+  skipMainstream?: boolean,
 ): ChannelIndex {
   // Build stream lookup: channel ID -> streams
   const streamsByChannel = new Map<string, IPTVRawStream[]>();
@@ -74,7 +75,7 @@ export function buildChannelIndex(
     // Pick best stream (prefer highest quality)
     const bestStream = pickBestStream(streams);
 
-    const isMainstream = isMainstreamChannel(
+    const isMainstream = skipMainstream ? false : isMainstreamChannel(
       raw.id, raw.country, !!raw.logo, raw.categories,
     );
 
