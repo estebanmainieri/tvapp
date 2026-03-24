@@ -3,7 +3,6 @@ package com.tvapp
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
@@ -17,6 +16,26 @@ class AppUpdaterModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     override fun getName() = "AppUpdater"
+
+    companion object {
+        private const val TAG = "AppUpdater"
+        const val BUNDLE_DIR = "bundles"
+        const val BUNDLE_FILE = "index.android.bundle"
+        const val BUNDLE_VERSION_FILE = "bundle_version.txt"
+
+        /** Get the path to the downloaded OTA bundle, or null if none exists */
+        fun getOtaBundlePath(context: android.content.Context): String? {
+            val bundleDir = File(context.filesDir, BUNDLE_DIR)
+            val bundleFile = File(bundleDir, BUNDLE_FILE)
+            val versionFile = File(bundleDir, BUNDLE_VERSION_FILE)
+            return if (bundleFile.exists() && bundleFile.length() > 1000 && versionFile.exists()) {
+                Log.d(TAG, "OTA bundle found: ${bundleFile.absolutePath} (${bundleFile.length()} bytes, version ${versionFile.readText().trim()})")
+                bundleFile.absolutePath
+            } else {
+                null
+            }
+        }
+    }
 
     @ReactMethod
     fun canInstallApks(promise: Promise) {
@@ -69,7 +88,7 @@ class AppUpdaterModule(reactContext: ReactApplicationContext) :
                 connection.disconnect()
                 currentUrl = location
                 redirectCount++
-                Log.d("AppUpdater", "Redirect $redirectCount -> $currentUrl")
+                Log.d(TAG, "Redirect $redirectCount -> $currentUrl")
             } else {
                 return connection
             }
@@ -77,11 +96,36 @@ class AppUpdaterModule(reactContext: ReactApplicationContext) :
         throw Exception("Too many redirects ($maxRedirects)")
     }
 
+    private fun downloadFile(fileUrl: String, destFile: File): Long {
+        val connection = followRedirects(fileUrl)
+
+        if (connection.responseCode != 200) {
+            throw Exception("HTTP ${connection.responseCode}")
+        }
+
+        val contentLength = connection.contentLength
+        Log.d(TAG, "Download size: $contentLength bytes")
+
+        connection.inputStream.use { input ->
+            FileOutputStream(destFile).use { output ->
+                val buffer = ByteArray(8192)
+                var bytesRead: Int
+                var totalRead = 0L
+                while (input.read(buffer).also { bytesRead = it } != -1) {
+                    output.write(buffer, 0, bytesRead)
+                    totalRead += bytesRead
+                }
+                Log.d(TAG, "Downloaded $totalRead bytes")
+                return totalRead
+            }
+        }
+    }
+
     @ReactMethod
     fun downloadAndInstall(apkUrl: String, promise: Promise) {
         Thread {
             try {
-                Log.d("AppUpdater", "Starting download from: $apkUrl")
+                Log.d(TAG, "Starting APK download from: $apkUrl")
                 val context = reactApplicationContext
                 val updatesDir = File(context.getExternalFilesDir(null), "updates")
                 if (!updatesDir.exists()) updatesDir.mkdirs()
@@ -89,37 +133,14 @@ class AppUpdaterModule(reactContext: ReactApplicationContext) :
                 val apkFile = File(updatesDir, "update.apk")
                 if (apkFile.exists()) apkFile.delete()
 
-                val connection = followRedirects(apkUrl)
-
-                if (connection.responseCode != 200) {
-                    val msg = "HTTP ${connection.responseCode}"
-                    Log.e("AppUpdater", "Download failed: $msg")
-                    promise.reject("DOWNLOAD_ERROR", msg)
-                    return@Thread
-                }
-
-                val contentLength = connection.contentLength
-                Log.d("AppUpdater", "Download size: $contentLength bytes")
-
-                connection.inputStream.use { input ->
-                    FileOutputStream(apkFile).use { output ->
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        var totalRead = 0L
-                        while (input.read(buffer).also { bytesRead = it } != -1) {
-                            output.write(buffer, 0, bytesRead)
-                            totalRead += bytesRead
-                        }
-                        Log.d("AppUpdater", "Downloaded $totalRead bytes")
-                    }
-                }
+                downloadFile(apkUrl, apkFile)
 
                 if (!apkFile.exists() || apkFile.length() < 1000) {
                     promise.reject("DOWNLOAD_ERROR", "APK file is too small or missing")
                     return@Thread
                 }
 
-                Log.d("AppUpdater", "APK saved: ${apkFile.length()} bytes")
+                Log.d(TAG, "APK saved: ${apkFile.length()} bytes")
 
                 val uri = FileProvider.getUriForFile(
                     context,
@@ -135,10 +156,87 @@ class AppUpdaterModule(reactContext: ReactApplicationContext) :
                 context.startActivity(intent)
                 promise.resolve(true)
             } catch (e: Exception) {
-                Log.e("AppUpdater", "Update error: ${e.message}", e)
+                Log.e(TAG, "APK update error: ${e.message}", e)
                 promise.reject("UPDATE_ERROR", e.message, e)
             }
         }.start()
+    }
+
+    /**
+     * Download a JS bundle for OTA update.
+     * Saves to internal storage (filesDir/bundles/) and records the version.
+     * App must be restarted to load the new bundle.
+     */
+    @ReactMethod
+    fun downloadBundle(bundleUrl: String, version: String, promise: Promise) {
+        Thread {
+            try {
+                Log.d(TAG, "Starting OTA bundle download from: $bundleUrl")
+                val context = reactApplicationContext
+                val bundleDir = File(context.filesDir, BUNDLE_DIR)
+                if (!bundleDir.exists()) bundleDir.mkdirs()
+
+                // Download to temp file first, then rename atomically
+                val tempFile = File(bundleDir, "index.android.bundle.tmp")
+                val bundleFile = File(bundleDir, BUNDLE_FILE)
+                val versionFile = File(bundleDir, BUNDLE_VERSION_FILE)
+
+                if (tempFile.exists()) tempFile.delete()
+
+                val size = downloadFile(bundleUrl, tempFile)
+
+                if (!tempFile.exists() || tempFile.length() < 1000) {
+                    tempFile.delete()
+                    promise.reject("DOWNLOAD_ERROR", "Bundle file is too small or missing")
+                    return@Thread
+                }
+
+                // Atomic rename
+                if (bundleFile.exists()) bundleFile.delete()
+                tempFile.renameTo(bundleFile)
+
+                // Save version
+                versionFile.writeText(version)
+
+                Log.d(TAG, "OTA bundle saved: ${bundleFile.length()} bytes, version $version")
+                promise.resolve(true)
+            } catch (e: Exception) {
+                Log.e(TAG, "OTA bundle error: ${e.message}", e)
+                promise.reject("BUNDLE_ERROR", e.message, e)
+            }
+        }.start()
+    }
+
+    /** Get the current OTA bundle version, or empty string if using built-in bundle */
+    @ReactMethod
+    fun getOtaBundleVersion(promise: Promise) {
+        try {
+            val context = reactApplicationContext
+            val versionFile = File(context.filesDir, "$BUNDLE_DIR/$BUNDLE_VERSION_FILE")
+            if (versionFile.exists()) {
+                promise.resolve(versionFile.readText().trim())
+            } else {
+                promise.resolve("")
+            }
+        } catch (e: Exception) {
+            promise.resolve("")
+        }
+    }
+
+    /** Delete the OTA bundle so the app falls back to the built-in one */
+    @ReactMethod
+    fun clearOtaBundle(promise: Promise) {
+        try {
+            val context = reactApplicationContext
+            val bundleDir = File(context.filesDir, BUNDLE_DIR)
+            if (bundleDir.exists()) {
+                bundleDir.deleteRecursively()
+                Log.d(TAG, "OTA bundle cleared")
+            }
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("CLEAR_ERROR", e.message, e)
+        }
     }
 
     @ReactMethod
@@ -159,6 +257,8 @@ class AppUpdaterModule(reactContext: ReactApplicationContext) :
             val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
+            // Kill current process so the new bundle loads on restart
+            android.os.Process.killProcess(android.os.Process.myPid())
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("RESTART_ERROR", e.message, e)

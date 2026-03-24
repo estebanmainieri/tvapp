@@ -9,7 +9,9 @@ const LATEST_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/
 export interface UpdateInfo {
   version: string;
   downloadUrl: string;
+  bundleUrl: string;
   hasUpdate: boolean;
+  isOta: boolean; // true = JS bundle only, false = full APK
   error?: string;
 }
 
@@ -36,23 +38,46 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
     const currentVersion = APP_VERSION;
 
     console.log('[Updater] Latest version:', latestVersion, 'Current:', currentVersion);
-    const hasUpdate = compareVersions(latestVersion, currentVersion) > 0;
 
-    let downloadUrl = '';
-    if (hasUpdate && release.assets) {
-      const apkAsset = release.assets.find(
-        (a: any) => a.name.endsWith('.apk'),
-      );
-      if (apkAsset) {
-        downloadUrl = apkAsset.browser_download_url;
-        console.log('[Updater] APK URL:', downloadUrl);
+    // Also check against OTA bundle version
+    let otaVersion = '';
+    if (Platform.OS === 'android') {
+      const { AppUpdater } = NativeModules;
+      if (AppUpdater?.getOtaBundleVersion) {
+        try {
+          otaVersion = await AppUpdater.getOtaBundleVersion();
+        } catch (_) {}
       }
     }
 
-    return { version: latestVersion, downloadUrl, hasUpdate };
+    const effectiveVersion = otaVersion && compareVersions(otaVersion, currentVersion) > 0
+      ? otaVersion
+      : currentVersion;
+
+    const hasUpdate = compareVersions(latestVersion, effectiveVersion) > 0;
+
+    let downloadUrl = '';
+    let bundleUrl = '';
+    if (hasUpdate && release.assets) {
+      for (const a of release.assets as any[]) {
+        if (a.name.endsWith('.apk')) {
+          downloadUrl = a.browser_download_url;
+        }
+        if (a.name === 'index.android.bundle') {
+          bundleUrl = a.browser_download_url;
+        }
+      }
+      console.log('[Updater] APK URL:', downloadUrl || 'none');
+      console.log('[Updater] Bundle URL:', bundleUrl || 'none');
+    }
+
+    // Prefer OTA bundle update (faster, no reinstall) over full APK
+    const isOta = !!bundleUrl;
+
+    return { version: latestVersion, downloadUrl, bundleUrl, hasUpdate, isOta };
   } catch (err: any) {
     console.warn('[Updater] Check failed:', err?.message || err);
-    return { version: APP_VERSION, downloadUrl: '', hasUpdate: false, error: err?.message || 'Check failed' };
+    return { version: APP_VERSION, downloadUrl: '', bundleUrl: '', hasUpdate: false, isOta: false, error: err?.message || 'Check failed' };
   }
 }
 
@@ -79,7 +104,7 @@ async function ensureInstallPermission(): Promise<boolean> {
   }
 }
 
-export async function applyUpdate(downloadUrl: string): Promise<void> {
+export async function applyUpdate(update: UpdateInfo): Promise<void> {
   if (Platform.OS === 'web') {
     (window as any).location.reload();
     return;
@@ -91,14 +116,37 @@ export async function applyUpdate(downloadUrl: string): Promise<void> {
       throw new Error('AppUpdater native module not available');
     }
 
-    const hasPermission = await ensureInstallPermission();
-    if (!hasPermission) {
-      throw new Error('Install permission not granted. Go to Settings > Apps > Tve+ > Install unknown apps');
+    // Prefer OTA bundle update
+    if (update.isOta && update.bundleUrl && AppUpdater.downloadBundle) {
+      console.log('[Updater] Applying OTA bundle update...');
+      await AppUpdater.downloadBundle(update.bundleUrl, update.version);
+      console.log('[Updater] OTA bundle downloaded. Restarting app...');
+      await AppUpdater.restartApp();
+      return;
     }
 
-    console.log('[Updater] Starting download and install...');
-    await AppUpdater.downloadAndInstall(downloadUrl);
+    // Fall back to full APK update
+    if (update.downloadUrl) {
+      const hasPermission = await ensureInstallPermission();
+      if (!hasPermission) {
+        throw new Error('Install permission not granted. Go to Settings > Apps > Tve+ > Install unknown apps');
+      }
+
+      console.log('[Updater] Starting APK download and install...');
+      await AppUpdater.downloadAndInstall(update.downloadUrl);
+    }
   }
+}
+
+// Keep backwards compatibility — old callers pass just a URL string
+export async function applyUpdateLegacy(downloadUrl: string): Promise<void> {
+  return applyUpdate({
+    version: '',
+    downloadUrl,
+    bundleUrl: '',
+    hasUpdate: true,
+    isOta: false,
+  });
 }
 
 let checkTimer: ReturnType<typeof setInterval> | null = null;

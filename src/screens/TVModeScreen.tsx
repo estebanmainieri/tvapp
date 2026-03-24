@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useMemo, useRef, useState, memo } from 'react';
-import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal, ActivityIndicator, ScrollView, TextInput, useWindowDimensions } from 'react-native';
+import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal, ActivityIndicator, ScrollView, TextInput, useWindowDimensions, NativeModules } from 'react-native';
 import { VideoPlayer } from '../components/player/VideoPlayer';
 import { useIPTVChannels, useIPTVCountries } from '../hooks/useIPTVChannels';
 import { usePlayerStore } from '../hooks/usePlayerStore';
@@ -267,7 +267,7 @@ const SettingsModal = memo(function SettingsModal({
       setUpdateError(info.error);
       setTimeout(() => setUpdateError(''), 5000);
     } else if (!info.hasUpdate) {
-      setUpdateInfo({ version: APP_VERSION, downloadUrl: '', hasUpdate: false });
+      setUpdateInfo({ version: displayVersion, downloadUrl: '', bundleUrl: '', hasUpdate: false, isOta: false });
       setTimeout(() => setUpdateInfo(null), 2000);
     }
   }, [setUpdateInfo]);
@@ -277,7 +277,7 @@ const SettingsModal = memo(function SettingsModal({
     setUpdateApplying(true);
     setUpdateError('');
     try {
-      await applyUpdate(updateInfo.downloadUrl);
+      await applyUpdate(updateInfo);
     } catch (err: any) {
       console.error('Update failed:', err);
       setUpdateError(err?.message || 'Update failed');
@@ -478,7 +478,7 @@ const SettingsModal = memo(function SettingsModal({
         </Pressable>
 
         <View style={styles.modalFooter}>
-          <Text style={styles.modalVersion}>{t(uiLanguage, 'version')} {APP_VERSION}</Text>
+          <Text style={styles.modalVersion}>{t(uiLanguage, 'version')} {displayVersion}</Text>
           <Text style={styles.modalContact}>{t(uiLanguage, 'contact')}: tveplus@app.com</Text>
         </View>
       </ScrollView>
@@ -528,22 +528,48 @@ export function TVModeScreen() {
   const [updateBanner, setUpdateBanner] = useState<string | null>(null);
   const [isAutoUpdating, setIsAutoUpdating] = useState(false);
 
+  const [displayVersion, setDisplayVersion] = useState(APP_VERSION);
+
+  // Check OTA version — show banner if just updated, and display correct version
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const { AppUpdater } = NativeModules;
+    if (!AppUpdater?.getOtaBundleVersion) return;
+    AppUpdater.getOtaBundleVersion().then((otaVer: string) => {
+      if (otaVer) {
+        setDisplayVersion(otaVer);
+        if (otaVer !== APP_VERSION) {
+          setUpdateBanner(`Actualizado a v${otaVer} ✓`);
+          setTimeout(() => setUpdateBanner(null), 5000);
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   // Background update check — shows banner and auto-applies
   useEffect(() => {
     startBackgroundUpdateCheck(async (info) => {
       setUpdateInfo(info);
       setUpdateBanner(`v${info.version} disponible`);
 
-      // Auto-apply update on Android TV
-      if (Platform.OS === 'android' && info.downloadUrl) {
+      // Auto-apply update on Android
+      if (Platform.OS === 'android' && (info.bundleUrl || info.downloadUrl)) {
         try {
           setIsAutoUpdating(true);
-          setUpdateBanner(`Descargando v${info.version}...`);
-          await applyUpdate(info.downloadUrl);
+          if (info.isOta) {
+            setUpdateBanner(`Actualizando a v${info.version}...`);
+          } else {
+            setUpdateBanner(`Descargando v${info.version}...`);
+          }
+          await applyUpdate(info);
+          // If OTA, the app will restart. If APK, the installer opens.
+          // We won't reach here for OTA since the process gets killed.
         } catch (err: any) {
           console.warn('[Updater] Auto-update failed:', err);
-          setUpdateBanner(`Update v${info.version} - abrir Settings`);
+          setUpdateBanner(`Update v${info.version} falló`);
           setIsAutoUpdating(false);
+          // Clear error banner after 10s
+          setTimeout(() => setUpdateBanner(null), 10000);
         }
       }
     });
