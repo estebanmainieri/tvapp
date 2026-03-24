@@ -511,6 +511,7 @@ export function TVModeScreen() {
   } = useFilterStore();
   const { data: countries } = useIPTVCountries();
   const flatListRef = useRef<FlatList>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [channelOsd, setChannelOsd] = useState<string | null>(null);
   const osdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -766,17 +767,23 @@ export function TVModeScreen() {
 
   useTVRemote(remoteHandlers);
 
-  // Scroll highlighted channel into view using FlatList
+  // Scroll highlighted channel into view
   useEffect(() => {
-    if (highlightedIdx >= 0 && channels.length > 0 && flatListRef.current) {
+    if (highlightedIdx >= 0 && channels.length > 0) {
       const idx = Math.min(highlightedIdx, channels.length - 1);
-      flatListRef.current.scrollToIndex({
-        index: idx,
-        animated: true,
-        viewPosition: 0.3,
-      });
+      // Try FlatList first, fallback to ScrollView
+      if (flatListRef.current) {
+        flatListRef.current.scrollToIndex({
+          index: idx,
+          animated: true,
+          viewPosition: 0.3,
+        });
+      } else if (scrollViewRef.current) {
+        const offset = Math.max(0, idx * ITEM_HEIGHT - windowHeight * 0.3);
+        scrollViewRef.current.scrollTo({ y: offset, animated: true });
+      }
     }
-  }, [highlightedIdx, channels.length]);
+  }, [highlightedIdx, channels.length, windowHeight]);
 
   // OSD channel indicator for fullscreen zapping
   const showOsd = useCallback((text: string) => {
@@ -918,7 +925,7 @@ export function TVModeScreen() {
             </Text>
           </View>
 
-          {/* Channel list — FlatList for performance */}
+          {/* Channel list */}
           {isLoading && !channelIndex ? (
             <View style={styles.inlineLoading}>
               <ActivityIndicator size="small" color={colors.accent} />
@@ -931,14 +938,14 @@ export function TVModeScreen() {
                 <Text style={styles.inlineRetryText}>Retry</Text>
               </Pressable>
             </View>
-          ) : (
+          ) : Platform.OS === 'web' ? (
           <FlatList
             ref={flatListRef}
             data={channels}
             renderItem={renderChannelItem}
             keyExtractor={keyExtractor}
             getItemLayout={getItemLayout}
-            style={{ flex: 1, flexGrow: 1, height: windowHeight - 140 }}
+            style={styles.listScroll}
             showsVerticalScrollIndicator={false}
             initialNumToRender={20}
             maxToRenderPerBatch={15}
@@ -961,6 +968,36 @@ export function TVModeScreen() {
               </Pressable>
             ) : null}
           />
+          ) : (
+          <ScrollView
+            ref={scrollViewRef}
+            style={{ flex: 1 }}
+            showsVerticalScrollIndicator={false}
+          >
+            {channels.map((item, index) => (
+              <ChannelItemConnected
+                key={item.id}
+                channel={item}
+                index={index}
+                channelNumberMap={channelNumberMap}
+                currentChannelId={currentChannel?.id ?? null}
+                focusZone={focusZone}
+                highlightedIdx={highlightedIdx}
+                favoriteIds={favoriteIds}
+                handlersRef={handlersRef}
+              />
+            ))}
+            {isTruncated && (
+              <Pressable
+                onPress={() => setShowAllChannels(true)}
+                style={({ pressed }) => [styles.showAllBtn, pressed && styles.showAllBtnPressed]}
+              >
+                <Text style={styles.showAllBtnText}>
+                  {t(uiLanguage, 'showAll')} ({totalCount})
+                </Text>
+              </Pressable>
+            )}
+          </ScrollView>
           )}
         </View>
       )}
