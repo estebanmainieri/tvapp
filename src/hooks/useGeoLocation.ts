@@ -1,8 +1,14 @@
 import { useEffect } from 'react';
 import { useFilterStore } from './useFilterStore';
+import { useSourceStore } from './useSourceStore';
 
 export function useGeoLocation() {
   const { initialized, initialize } = useFilterStore();
+  const initSources = useSourceStore(s => s.initialize);
+
+  useEffect(() => {
+    initSources();
+  }, [initSources]);
 
   useEffect(() => {
     if (initialized) return;

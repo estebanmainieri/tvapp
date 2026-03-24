@@ -9,11 +9,21 @@
 
 const MAINSTREAM_IDS: Record<string, string[]> = {
   AR: [
-    'Telefe.ar', 'ElTrece.ar', 'ElNueve.ar', 'AmericaTV.ar', 'TVPublica.ar',
-    'NETTV.ar', 'Canal26.ar', 'TN.ar', 'C5N.ar', 'CronicaTV.ar', 'A24.ar',
-    'LaNacionPlus.ar', 'IPNoticias.ar', 'CanaldelaCiudad.ar', 'TyCSports.ar',
-    'DeporTV.ar', 'ESPNPremium.ar', 'TNTSports.ar', 'CanalShowsport.ar',
-    'Encuentro.ar', 'Pakapaka.ar', 'CineAr.ar', 'CanalRural.ar', 'ElDoce.ar',
+    // Broadcast networks (with streams)
+    'Telefe.ar', 'ElTrece.ar', 'AmericaTV.ar', 'TVPublica.ar', 'NETTV.ar',
+    'TelefeInternacional.ar', 'TelefeRosario.ar',
+    // News
+    'TN.ar', 'A24.ar', 'Canal26.ar', 'CanalE.ar', '247CanaldeNoticias.ar',
+    // Sports
+    'TyCSports.ar',
+    // Regional broadcast
+    'Canal10Cordoba.ar', 'Canal9Televida.ar', 'Canal7Jujuy.ar', 'Canal7Neuquen.ar',
+    'Canal7Salta.ar', 'Canal13Jujuy.ar', 'Canal13LaRioja.ar', 'Canal13SanLuis.ar',
+    'Canal5SantaFe.ar', 'Canal4SanJuan.ar', 'Canal4Posadas.ar', 'Canal4Jujuy.ar',
+    'Canal3LaPampa.ar', 'Canal2Misiones.ar', 'Canal9Resistencia.ar', 'Canal9Litoral.ar',
+    'CatamarcaTV.ar', 'ChacoTV.ar', 'MisionesCuatro.ar',
+    // Entertainment
+    'CiudadMagazine.ar', 'MagicKids.ar',
   ],
   US: [
     'ABC.us', 'CBS.us', 'NBC.us', 'Fox.us', 'TheCW.us', 'PBS.us',

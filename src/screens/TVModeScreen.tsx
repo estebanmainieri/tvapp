@@ -1,9 +1,10 @@
 import React, { useEffect, useCallback, useMemo, useRef, useState, memo } from 'react';
-import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal, ActivityIndicator, ScrollView, TextInput } from 'react-native';
 import { VideoPlayer } from '../components/player/VideoPlayer';
 import { useIPTVChannels, useIPTVCountries } from '../hooks/useIPTVChannels';
 import { usePlayerStore } from '../hooks/usePlayerStore';
 import { useFilterStore } from '../hooks/useFilterStore';
+import { useSourceStore } from '../hooks/useSourceStore';
 import { useTVRemote } from '../hooks/useTVRemote';
 import { useFavorites } from '../hooks/useFavorites';
 import { UnifiedChannel } from '../types';
@@ -231,13 +232,24 @@ const SettingsModal = memo(function SettingsModal({
   const [updateChecking, setUpdateChecking] = useState(false);
   const [updateApplying, setUpdateApplying] = useState(false);
   const [updateError, setUpdateError] = useState('');
+  const [addingSource, setAddingSource] = useState(false);
+  const [newSourceName, setNewSourceName] = useState('');
+  const [newSourceUrl, setNewSourceUrl] = useState('');
+
+  const { sources, toggleSource, addCustomSource, removeCustomSource } = useSourceStore();
 
   // D-pad focus management for TV
+  // Items: 0=language, 1..N=sources, N+1=add source, N+2=updates, N+3=clear cache, N+4=close
   const [focusIdx, setFocusIdx] = useState(0);
   const langIdx = UI_LANGUAGES.findIndex(l => l.value === uiLanguage);
 
-  // Modal items: 0=language, 1=check/apply update, 2=clear cache, 3=close
-  const ITEM_COUNT = 4;
+  const SOURCE_START = 1;
+  const SOURCE_END = SOURCE_START + sources.length; // exclusive
+  const ADD_SOURCE_IDX = SOURCE_END;
+  const UPDATE_IDX = ADD_SOURCE_IDX + 1;
+  const CACHE_IDX = UPDATE_IDX + 1;
+  const CLOSE_IDX = CACHE_IDX + 1;
+  const ITEM_COUNT = CLOSE_IDX + 1;
 
   const handleClearCache = useCallback(async () => {
     await AsyncStorage.clear();
@@ -273,55 +285,72 @@ const SettingsModal = memo(function SettingsModal({
     }
   }, [updateInfo?.downloadUrl]);
 
+  const handleAddSource = useCallback(() => {
+    if (newSourceName.trim() && newSourceUrl.trim()) {
+      addCustomSource(newSourceName.trim(), newSourceUrl.trim());
+      setNewSourceName('');
+      setNewSourceUrl('');
+      setAddingSource(false);
+    }
+  }, [newSourceName, newSourceUrl, addCustomSource]);
+
   // Handle D-pad inside modal (TV remote)
   useTVRemote(useMemo(() => ({
     onUp: () => setFocusIdx(prev => Math.max(prev - 1, 0)),
     onDown: () => setFocusIdx(prev => Math.min(prev + 1, ITEM_COUNT - 1)),
     onLeft: () => {
       if (focusIdx === 0) {
-        // Cycle language backward
         const prevIdx = langIdx <= 0 ? UI_LANGUAGES.length - 1 : langIdx - 1;
         setUiLanguage(UI_LANGUAGES[prevIdx].value);
       }
     },
     onRight: () => {
       if (focusIdx === 0) {
-        // Cycle language forward
         const nextIdx = langIdx >= UI_LANGUAGES.length - 1 ? 0 : langIdx + 1;
         setUiLanguage(UI_LANGUAGES[nextIdx].value);
       }
     },
     onSelect: () => {
       if (focusIdx === 0) {
-        // Cycle language forward on select too
         const nextIdx = langIdx >= UI_LANGUAGES.length - 1 ? 0 : langIdx + 1;
         setUiLanguage(UI_LANGUAGES[nextIdx].value);
-      } else if (focusIdx === 1) {
-        if (updateInfo?.hasUpdate) {
-          handleApplyUpdate();
-        } else {
-          handleCheckUpdate();
-        }
-      } else if (focusIdx === 2) {
+      } else if (focusIdx >= SOURCE_START && focusIdx < SOURCE_END) {
+        const sourceIdx = focusIdx - SOURCE_START;
+        toggleSource(sources[sourceIdx].id);
+      } else if (focusIdx === ADD_SOURCE_IDX) {
+        setAddingSource(true);
+      } else if (focusIdx === UPDATE_IDX) {
+        if (updateInfo?.hasUpdate) handleApplyUpdate();
+        else handleCheckUpdate();
+      } else if (focusIdx === CACHE_IDX) {
         handleClearCache();
-      } else if (focusIdx === 3) {
+      } else if (focusIdx === CLOSE_IDX) {
         onClose();
       }
     },
-    onBack: () => { onClose(); return true; },
-    onMenu: () => { onClose(); },
-  }), [focusIdx, langIdx, uiLanguage, updateInfo, handleApplyUpdate, handleCheckUpdate, handleClearCache, onClose, setUiLanguage]));
+    onBack: () => {
+      if (addingSource) { setAddingSource(false); return true; }
+      onClose(); return true;
+    },
+    onMenu: () => {
+      if (addingSource) setAddingSource(false);
+      else onClose();
+    },
+  }), [focusIdx, langIdx, uiLanguage, sources, updateInfo, addingSource,
+    ITEM_COUNT, SOURCE_START, SOURCE_END, ADD_SOURCE_IDX, UPDATE_IDX, CACHE_IDX, CLOSE_IDX,
+    handleApplyUpdate, handleCheckUpdate, handleClearCache, onClose, setUiLanguage, toggleSource]));
 
   const modalInner = (
     <View style={styles.modalContent}>
       <View style={styles.modalHeader}>
         <Text style={styles.modalTitle}>{t(uiLanguage, 'settings')}</Text>
-        <Pressable onPress={onClose} style={[styles.modalClose, focusIdx === 3 && styles.modalItemFocused]}>
+        <Pressable onPress={onClose} style={[styles.modalClose, focusIdx === CLOSE_IDX && styles.modalItemFocused]}>
           <Text style={styles.modalCloseIcon}>{'\u2715'}</Text>
         </Pressable>
       </View>
 
-      <View style={styles.modalBody}>
+      <ScrollView style={styles.modalBody}>
+        {/* Language */}
         <Text style={styles.modalLabel}>{t(uiLanguage, 'language')}</Text>
         {Platform.OS === 'web' ? (
           <SelectPicker value={uiLanguage} onChange={setUiLanguage} options={UI_LANGUAGES} />
@@ -335,6 +364,72 @@ const SettingsModal = memo(function SettingsModal({
           </View>
         )}
 
+        {/* Channel Sources */}
+        <Text style={[styles.modalLabel, ...modalLabelWithMargin]}>
+          {t(uiLanguage, 'sources')}
+        </Text>
+        {sources.map((source, i) => (
+          <Pressable
+            key={source.id}
+            onPress={() => toggleSource(source.id)}
+            style={[
+              styles.sourceRow,
+              focusIdx === SOURCE_START + i && styles.modalItemFocused,
+            ]}
+          >
+            <View style={styles.sourceInfo}>
+              <Text style={styles.sourceName}>{source.name}</Text>
+              {!source.isBuiltIn && (
+                <Pressable onPress={() => removeCustomSource(source.id)} style={styles.sourceRemoveBtn}>
+                  <Text style={styles.sourceRemoveText}>{'\u2715'}</Text>
+                </Pressable>
+              )}
+            </View>
+            <Text style={[styles.sourceStatus, source.enabled && styles.sourceStatusActive]}>
+              {source.enabled ? t(uiLanguage, 'enabled') : t(uiLanguage, 'disabled')}
+            </Text>
+          </Pressable>
+        ))}
+
+        {/* Add custom source */}
+        {addingSource ? (
+          <View style={styles.addSourceForm}>
+            <TextInput
+              style={styles.addSourceInput}
+              placeholder={t(uiLanguage, 'addSourceName')}
+              placeholderTextColor={colors.textMuted}
+              value={newSourceName}
+              onChangeText={setNewSourceName}
+              autoFocus
+            />
+            <TextInput
+              style={styles.addSourceInput}
+              placeholder={t(uiLanguage, 'addSourceUrl')}
+              placeholderTextColor={colors.textMuted}
+              value={newSourceUrl}
+              onChangeText={setNewSourceUrl}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={styles.addSourceButtons}>
+              <Pressable onPress={handleAddSource} style={styles.addSourceConfirmBtn}>
+                <Text style={styles.addSourceConfirmText}>{t(uiLanguage, 'add')}</Text>
+              </Pressable>
+              <Pressable onPress={() => setAddingSource(false)} style={styles.addSourceCancelBtn}>
+                <Text style={styles.addSourceCancelText}>{t(uiLanguage, 'cancel')}</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => setAddingSource(true)}
+            style={[styles.modalCheckBtn, focusIdx === ADD_SOURCE_IDX && styles.modalItemFocused]}
+          >
+            <Text style={styles.modalCheckBtnText}>+ {t(uiLanguage, 'addSource')}</Text>
+          </Pressable>
+        )}
+
+        {/* Updates */}
         <Text style={[styles.modalLabel, ...modalLabelWithMargin]}>
           {t(uiLanguage, 'checkUpdates')}
         </Text>
@@ -342,7 +437,7 @@ const SettingsModal = memo(function SettingsModal({
           <Pressable
             onPress={handleApplyUpdate}
             disabled={updateApplying}
-            style={({ pressed }) => [styles.modalUpdateBtn, pressed && styles.modalUpdateBtnPressed, focusIdx === 1 && styles.modalItemFocused]}
+            style={({ pressed }) => [styles.modalUpdateBtn, pressed && styles.modalUpdateBtnPressed, focusIdx === UPDATE_IDX && styles.modalItemFocused]}
           >
             <Text style={styles.modalUpdateBtnText}>
               {updateApplying
@@ -354,7 +449,7 @@ const SettingsModal = memo(function SettingsModal({
           <Pressable
             onPress={handleCheckUpdate}
             disabled={updateChecking}
-            style={({ pressed }) => [styles.modalCheckBtn, pressed && styles.modalCheckBtnPressed, focusIdx === 1 && styles.modalItemFocused]}
+            style={({ pressed }) => [styles.modalCheckBtn, pressed && styles.modalCheckBtnPressed, focusIdx === UPDATE_IDX && styles.modalItemFocused]}
           >
             <Text style={styles.modalCheckBtnText}>
               {updateChecking
@@ -369,12 +464,13 @@ const SettingsModal = memo(function SettingsModal({
           <Text style={styles.modalErrorText}>{updateError}</Text>
         ) : null}
 
+        {/* Clear cache */}
         <Text style={[styles.modalLabel, ...modalLabelWithMargin]}>
           {t(uiLanguage, 'clearCache')}
         </Text>
         <Pressable
           onPress={handleClearCache}
-          style={({ pressed }) => [styles.modalDangerBtn, pressed && styles.modalDangerBtnPressed, focusIdx === 2 && styles.modalItemFocused]}
+          style={({ pressed }) => [styles.modalDangerBtn, pressed && styles.modalDangerBtnPressed, focusIdx === CACHE_IDX && styles.modalItemFocused]}
         >
           <Text style={styles.modalDangerBtnText}>
             {cacheCleared ? t(uiLanguage, 'clearCacheDone') : t(uiLanguage, 'clearCache')}
@@ -385,7 +481,7 @@ const SettingsModal = memo(function SettingsModal({
           <Text style={styles.modalVersion}>{t(uiLanguage, 'version')} {APP_VERSION}</Text>
           <Text style={styles.modalContact}>{t(uiLanguage, 'contact')}: tveplus@app.com</Text>
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 
@@ -846,7 +942,7 @@ export function TVModeScreen() {
             initialNumToRender={20}
             maxToRenderPerBatch={15}
             windowSize={7}
-            removeClippedSubviews={Platform.OS !== 'web'}
+            removeClippedSubviews={false}
             onScrollToIndexFailed={(info) => {
               flatListRef.current?.scrollToOffset({
                 offset: info.averageItemLength * info.index,
@@ -868,8 +964,8 @@ export function TVModeScreen() {
         </View>
       )}
 
-      {/* Player section — flex:1 fills remaining space, never behind sidebar */}
-      <View style={styles.playerSection}>
+      {/* Player section — flex:1 fills remaining space */}
+      <View style={[styles.playerSection, sidebarVisible && styles.playerWithSidebar]}>
         {currentChannel ? (
           <>
             <VideoPlayer />
@@ -1039,12 +1135,15 @@ const styles = StyleSheet.create({
 
   // Sidebar — fixed width, never overlaps player
   sidebar: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
     width: 280,
     backgroundColor: colors.surface,
     borderRightWidth: 1,
     borderRightColor: colors.surfaceHighlight,
-    zIndex: 1,
-    height: '100%',
+    zIndex: 2,
   },
   toolbar: {
     flexDirection: 'row',
@@ -1294,6 +1393,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     position: 'relative',
   } as any,
+  playerWithSidebar: {
+    marginLeft: 280,
+  },
   noChannel: {
     flex: 1,
     alignItems: 'center',
@@ -1527,6 +1629,83 @@ const styles = StyleSheet.create({
     color: '#ff6b6b',
     fontSize: 12,
     marginTop: 6,
+  },
+  sourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surfaceHighlight,
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 6,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  sourceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 8,
+  },
+  sourceName: {
+    color: colors.textPrimary,
+    fontSize: 14,
+  },
+  sourceRemoveBtn: {
+    padding: 4,
+  },
+  sourceRemoveText: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  sourceStatus: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  sourceStatusActive: {
+    color: colors.accent,
+  },
+  addSourceForm: {
+    backgroundColor: colors.surfaceHighlight,
+    borderRadius: 6,
+    padding: 10,
+    gap: 8,
+    marginBottom: 6,
+  },
+  addSourceInput: {
+    backgroundColor: colors.surface,
+    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: colors.textPrimary,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: colors.surfaceLight,
+  },
+  addSourceButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  addSourceConfirmBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  addSourceConfirmText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  addSourceCancelBtn: {
+    borderRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  addSourceCancelText: {
+    color: colors.textMuted,
+    fontSize: 13,
   },
   modalUpdateBtn: {
     paddingHorizontal: 14,
