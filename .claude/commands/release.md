@@ -40,8 +40,8 @@ Build and publish a new release. Automatically detects release type and version 
 6. **Tag and push**: Create git tag with the final version and push to origin/main.
 
 7. **Create GitHub Release**:
-   - Full release: attach BOTH `app-release.apk` AND `index.android.bundle`
-   - OTA release: attach ONLY `index.android.bundle`
+   - Full release: attach BOTH `app-release.apk` AND `index.android.bundle`, use `--latest`
+   - OTA release: attach ONLY `index.android.bundle`, do NOT use `--latest` (so the `/releases/latest/download/app-release.apk` link always points to the last full APK)
    Include release type and changelog in the notes.
 
 8. **Verify**: `gh release view vX.Y.Z`. Tell the user:
