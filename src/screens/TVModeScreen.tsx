@@ -1,8 +1,6 @@
 import React, { useEffect, useCallback, useMemo, useRef, useState, memo } from 'react';
-import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal } from 'react-native';
+import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal, ActivityIndicator } from 'react-native';
 import { VideoPlayer } from '../components/player/VideoPlayer';
-import { LoadingSpinner } from '../components/common/LoadingSpinner';
-import { ErrorState } from '../components/common/ErrorState';
 import { useIPTVChannels, useIPTVCountries } from '../hooks/useIPTVChannels';
 import { usePlayerStore } from '../hooks/usePlayerStore';
 import { useFilterStore } from '../hooks/useFilterStore';
@@ -563,6 +561,19 @@ export function TVModeScreen() {
           setSettingsOpen(false);
         }
       },
+      onBack: () => {
+        const s = stateRef.current;
+        if (s.settingsOpen) {
+          setSettingsOpen(false);
+          return true;
+        }
+        if (!s.sidebarVisible) {
+          actionsRef.current.toggleSidebar();
+          setFocusZone('channels');
+          return true;
+        }
+        return false; // sidebar visible, no modal — let app close
+      },
       onPlayPause: () => actionsRef.current.togglePlay(),
     }),
     [], // stable — reads from refs
@@ -639,14 +650,6 @@ export function TVModeScreen() {
   }), []);
 
   const keyExtractor = useCallback((item: UnifiedChannel) => item.id, []);
-
-  if (isLoading && !channelIndex) {
-    return <LoadingSpinner message={t(uiLanguage, 'loading')} fullScreen />;
-  }
-
-  if (error && !channelIndex) {
-    return <ErrorState message={t(uiLanguage, 'loadError')} onRetry={() => refetch()} />;
-  }
 
   return (
     <View style={styles.container}>
@@ -731,6 +734,19 @@ export function TVModeScreen() {
           </View>
 
           {/* Channel list — FlatList for performance */}
+          {isLoading && !channelIndex ? (
+            <View style={styles.inlineLoading}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={styles.inlineLoadingText}>{t(uiLanguage, 'loading')}</Text>
+            </View>
+          ) : error && !channelIndex ? (
+            <View style={styles.inlineLoading}>
+              <Text style={styles.inlineErrorText}>{t(uiLanguage, 'loadError')}</Text>
+              <Pressable onPress={() => refetch()} style={styles.inlineRetryBtn}>
+                <Text style={styles.inlineRetryText}>Retry</Text>
+              </Pressable>
+            </View>
+          ) : (
           <FlatList
             ref={flatListRef}
             data={channels}
@@ -760,6 +776,7 @@ export function TVModeScreen() {
               </Pressable>
             ) : null}
           />
+          )}
         </View>
       )}
 
@@ -1126,6 +1143,36 @@ const styles = StyleSheet.create({
     borderColor: colors.focusBorder,
   },
 
+  inlineLoading: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.lg,
+  } as any,
+  inlineLoadingText: {
+    ...typography.caption,
+    color: colors.textMuted,
+    marginTop: spacing.sm,
+    fontSize: 12,
+  },
+  inlineErrorText: {
+    ...typography.caption,
+    color: colors.error,
+    fontSize: 12,
+    textAlign: 'center',
+  } as any,
+  inlineRetryBtn: {
+    marginTop: spacing.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: colors.surfaceLight,
+  },
+  inlineRetryText: {
+    ...typography.caption,
+    color: colors.accent,
+    fontSize: 12,
+  },
   showAllBtn: {
     paddingVertical: 10,
     alignItems: 'center',

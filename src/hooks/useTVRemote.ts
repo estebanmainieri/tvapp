@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react';
-import { Platform } from 'react-native';
+import { Platform, BackHandler } from 'react-native';
 
 // useTVEventHandler only exists in react-native-tvos, not in react-native-web
 let useTVEventHandler: ((callback: (evt: { eventType: string }) => void) => void) | undefined;
@@ -26,6 +26,7 @@ interface TVRemoteHandlers {
   onLeft?: () => void;
   onRight?: () => void;
   onMenu?: () => void;
+  onBack?: () => boolean; // return true to prevent app close
   onPlayPause?: () => void;
 }
 
@@ -98,6 +99,19 @@ export function useTVRemote(handlers: TVRemoteHandlers) {
     // eslint-disable-next-line react-hooks/rules-of-hooks
     useTVEventHandler(handleEvent);
   }
+
+  // Android back button → onBack or onMenu
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      const h = handlersRef.current;
+      if (h.onBack) {
+        return h.onBack(); // true = handled, false = let app close
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, []);
 
   // On web, use keyboard navigation
   useWebKeyboardNav(handlers);
