@@ -1,17 +1,23 @@
 # Release Tve+
 
-Build and publish a new release of the Tve+ app. Automatically detects whether a full APK or OTA-only release is needed.
+Build and publish a new release. Automatically detects release type and version bump.
 
 ## Steps
 
-1. **Detect release type**: Run `git diff HEAD -- android/` to check if any native code changed since the last release tag. If native files changed → full APK + OTA bundle. If only JS/TS changed → OTA bundle only.
+1. **Detect release type and version bump**:
+   - Check `git diff <last-release-tag> -- android/` for native code changes
+   - If native code changed → **full release** (APK + OTA bundle), bump **minor** (0.X.0)
+   - If only JS/TS changed → **OTA release** (bundle only), bump **patch** (0.0.X)
+   - Override: if `$ARGUMENTS` is `major`, `minor`, or `patch`, use that instead
 
-2. **Bump version**: Read `version.json`, increment the patch number (or use `$ARGUMENTS` if provided: `major`, `minor`, or `patch`). Update both `version.json` and `src/version.ts`.
+2. **Bump version**: Update `version.json` and `src/version.ts` with the new version.
 
-3. **Git commit**: Stage all changed files, commit with message `release: vX.Y.Z`. The pre-commit hook will auto-bump the version — read the final version from `version.json` after commit and use THAT for the tag.
+3. **Git commit**: Stage all changed files, commit with message:
+   - Full release: `release: vX.Y.Z`
+   - OTA release: `release: vX.Y.Z (OTA)`
+   The pre-commit hook will auto-bump the patch — read the final version from `version.json` after commit and use THAT for the tag.
 
-4. **If full release (native changed)**:
-   Build APK:
+4. **If full release** — build APK:
    ```
    export ANDROID_HOME=$HOME/Library/Android/sdk
    export JAVA_HOME=/usr/local/opt/openjdk@17
@@ -35,13 +41,14 @@ Build and publish a new release of the Tve+ app. Automatically detects whether a
 
 7. **Create GitHub Release**:
    - Full release: attach BOTH `app-release.apk` AND `index.android.bundle`
-   - OTA only: attach ONLY `index.android.bundle`
-   Include release type in the notes (e.g., "OTA update" or "Full release").
+   - OTA release: attach ONLY `index.android.bundle`
+   Include release type and changelog in the notes.
 
-8. **Verify**: `gh release view vX.Y.Z`
+8. **Verify**: `gh release view vX.Y.Z`. Tell the user:
+   - Release type (OTA or full APK)
+   - What the TV box will do (auto-restart vs reinstall)
 
 ## Important
 - Do NOT release without the user's explicit request
 - Do NOT skip any step
 - Always verify the GitHub release was created successfully before reporting done
-- Tell the user whether this was an OTA or full APK release
