@@ -651,18 +651,9 @@ export function TVModeScreen() {
   // Navigate channels WITHOUT auto-playing — confirm with Enter
   const handleChannelSelect = useCallback(
     (channel: UnifiedChannel, index: number) => {
-      if (viewMode === 'multicam') {
-        // In multicam mode, assign channel to the focused slot
-        setMulticamSlots(prev => {
-          const next = [...prev];
-          next[multicamFocusedSlot] = channel;
-          return next;
-        });
-      } else {
-        play(channel, channels, index);
-      }
+      play(channel, channels, index);
     },
-    [channels, play, viewMode, multicamFocusedSlot],
+    [channels, play],
   );
 
   // Control buttons in order for D-pad navigation
@@ -676,8 +667,8 @@ export function TVModeScreen() {
     { id: 'fullscreen', action: toggleSidebar },
   ], [channels, currentChannel, currentIdx, play, togglePlay, toggleMute, toggleFavorite, reload, toggleSidebar]);
 
-  // View modes for the selector
-  const VIEW_MODES: ViewMode[] = ['popular', 'favorites', 'tv', 'multicam'];
+  // View modes for the selector — each is its own toolbar focus item
+  const VIEW_MODES: ViewMode[] = ['popular', 'favorites', 'multicam', 'tv'];
   const VIEW_MODE_LABELS: Record<ViewMode, string> = {
     all: t(uiLanguage, 'modeAll'),
     popular: t(uiLanguage, 'modePopular'),
@@ -685,35 +676,37 @@ export function TVModeScreen() {
     tv: t(uiLanguage, 'modeTV'),
     multicam: t(uiLanguage, 'modeMulticam'),
   };
-  const VIEW_MODE_ICONS: Record<ViewMode, string> = {
-    all: '\u2630',       // hamburger menu
-    popular: '\u265B',   // chess queen
-    favorites: '\u2605', // star
-    tv: '\u25A3',        // white square with rounded corners
-    multicam: '\u2B1A',  // dotted square (grid)
-  };
-  // Toolbar indices: 0 = mode selector, 1 = country, 2 = settings
-  const TOOLBAR_MAX = 2;
+  // Toolbar indices: 0..3 = view modes, 4 = country, 5 = settings
+  const MODE_COUNT = VIEW_MODES.length;
+  const COUNTRY_IDX = MODE_COUNT;
+  const SETTINGS_IDX = MODE_COUNT + 1;
+  const TOOLBAR_MAX = SETTINGS_IDX;
+
+  // Multicam channel picker state
+  const [multicamPickerOpen, setMulticamPickerOpen] = useState(false);
+  const [multicamPickerIdx, setMulticamPickerIdx] = useState(0);
 
   // TV remote handlers — use refs so useTVRemote never re-attaches
   const stateRef = useRef({
     focusZone, highlightedIdx, controlFocusIdx, toolbarFocusIdx,
-    channels, sidebarVisible, settingsOpen, viewMode, multicamFocusedSlot,
+    channels, sidebarVisible, settingsOpen, viewMode, multicamFocusedSlot, multicamPickerOpen, multicamPickerIdx,
   });
   stateRef.current = {
     focusZone, highlightedIdx, controlFocusIdx, toolbarFocusIdx,
-    channels, sidebarVisible, settingsOpen, viewMode, multicamFocusedSlot,
+    channels, sidebarVisible, settingsOpen, viewMode, multicamFocusedSlot, multicamPickerOpen, multicamPickerIdx,
   };
 
   const actionsRef = useRef({
     channelUp, channelDown, play, togglePlay, toggleMute, toggleSidebar,
     toggleFavorite, toggleFavoritesOnly, toggleMainstreamOnly, controlActions,
-    setViewMode, setMulticamFocusedSlot,
+    setViewMode, setMulticamFocusedSlot, setMulticamPickerOpen, setMulticamPickerIdx,
+    handleChannelSelect, setMulticamSlots,
   });
   actionsRef.current = {
     channelUp, channelDown, play, togglePlay, toggleMute, toggleSidebar,
     toggleFavorite, toggleFavoritesOnly, toggleMainstreamOnly, controlActions,
-    setViewMode, setMulticamFocusedSlot,
+    setViewMode, setMulticamFocusedSlot, setMulticamPickerOpen, setMulticamPickerIdx,
+    handleChannelSelect, setMulticamSlots,
   };
 
   const remoteHandlers = useMemo(
@@ -721,9 +714,13 @@ export function TVModeScreen() {
       onDown: () => {
         const s = stateRef.current;
         if (s.settingsOpen) return;
+        // Multicam channel picker navigation
+        if (s.multicamPickerOpen) {
+          actionsRef.current.setMulticamPickerIdx(Math.min(s.multicamPickerIdx + 1, s.channels.length - 1));
+          return;
+        }
         // Multicam slot navigation (fullscreen)
         if (s.viewMode === 'multicam' && !s.sidebarVisible) {
-          // Move down in 2x2 grid: 0→2, 1→3
           if (s.multicamFocusedSlot < 2) actionsRef.current.setMulticamFocusedSlot(s.multicamFocusedSlot + 2);
           return;
         }
@@ -745,6 +742,10 @@ export function TVModeScreen() {
       onUp: () => {
         const s = stateRef.current;
         if (s.settingsOpen) return;
+        if (s.multicamPickerOpen) {
+          actionsRef.current.setMulticamPickerIdx(Math.max(s.multicamPickerIdx - 1, 0));
+          return;
+        }
         if (s.viewMode === 'multicam' && !s.sidebarVisible) {
           if (s.multicamFocusedSlot >= 2) actionsRef.current.setMulticamFocusedSlot(s.multicamFocusedSlot - 2);
           return;
@@ -768,8 +769,8 @@ export function TVModeScreen() {
       onRight: () => {
         const s = stateRef.current;
         if (s.settingsOpen) return;
+        if (s.multicamPickerOpen) return; // picker only navigates up/down
         if (s.viewMode === 'multicam' && !s.sidebarVisible) {
-          // Move right in 2x2 grid: 0→1, 2→3
           if (s.multicamFocusedSlot % 2 === 0) actionsRef.current.setMulticamFocusedSlot(s.multicamFocusedSlot + 1);
           return;
         }
@@ -787,13 +788,10 @@ export function TVModeScreen() {
       onLeft: () => {
         const s = stateRef.current;
         if (s.settingsOpen) return;
+        if (s.multicamPickerOpen) return; // picker only navigates up/down
         if (s.viewMode === 'multicam' && !s.sidebarVisible) {
           if (s.multicamFocusedSlot % 2 === 1) {
             actionsRef.current.setMulticamFocusedSlot(s.multicamFocusedSlot - 1);
-          } else {
-            // Left on left column = open sidebar
-            actionsRef.current.toggleSidebar();
-            setFocusZone('channels');
           }
           return;
         }
@@ -816,18 +814,32 @@ export function TVModeScreen() {
         const s = stateRef.current;
         if (s.settingsOpen) return;
         const a = actionsRef.current;
+        // Multicam channel picker — select a channel for the slot
+        if (s.multicamPickerOpen) {
+          if (s.multicamPickerIdx >= 0 && s.multicamPickerIdx < s.channels.length) {
+            const ch = s.channels[s.multicamPickerIdx];
+            a.setMulticamSlots((prev: (UnifiedChannel | null)[]) => {
+              const next = [...prev];
+              next[s.multicamFocusedSlot] = ch;
+              return next;
+            });
+            a.setMulticamPickerOpen(false);
+          }
+          return;
+        }
+        // Multicam fullscreen — Select on a slot opens the channel picker
+        if (s.viewMode === 'multicam' && !s.sidebarVisible) {
+          a.setMulticamPickerIdx(0);
+          a.setMulticamPickerOpen(true);
+          return;
+        }
         if (s.focusZone === 'toolbar') {
-          if (s.toolbarFocusIdx === 0) {
-            // Cycle to next view mode
-            const curIdx = VIEW_MODES.indexOf(s.viewMode as ViewMode);
-            const nextIdx = (curIdx + 1) % VIEW_MODES.length;
-            a.setViewMode(VIEW_MODES[nextIdx]);
-          } else if (s.toolbarFocusIdx === 2) {
+          if (s.toolbarFocusIdx < MODE_COUNT) {
+            a.setViewMode(VIEW_MODES[s.toolbarFocusIdx]);
+          } else if (s.toolbarFocusIdx === SETTINGS_IDX) {
             setSettingsOpen(true);
           }
         } else if (s.focusZone === 'channels' && s.highlightedIdx >= 0 && s.highlightedIdx < s.channels.length) {
-          // On Android TV, native Pressable onPress handles channel selection correctly.
-          // Only use onSelect for web where there's no native focus system.
           if (Platform.OS === 'web') {
             a.play(s.channels[s.highlightedIdx], s.channels, s.highlightedIdx);
           }
@@ -841,8 +853,14 @@ export function TVModeScreen() {
       },
       onMenu: () => {
         const s = stateRef.current;
+        if (s.multicamPickerOpen) { actionsRef.current.setMulticamPickerOpen(false); return; }
         if (s.settingsOpen) return;
-        if (!s.sidebarVisible) {
+        if (s.viewMode === 'multicam' || s.viewMode === 'tv') {
+          // In fullscreen modes, Menu goes back to popular mode (with sidebar)
+          actionsRef.current.setViewMode('popular' as ViewMode);
+          setFocusZone('toolbar');
+          setToolbarFocusIdx(0);
+        } else if (!s.sidebarVisible) {
           actionsRef.current.toggleSidebar();
           setFocusZone('channels');
         } else if (s.settingsOpen) {
@@ -851,13 +869,20 @@ export function TVModeScreen() {
       },
       onBack: () => {
         const s = stateRef.current;
+        if (s.multicamPickerOpen) { actionsRef.current.setMulticamPickerOpen(false); return true; }
         if (s.settingsOpen) return true; // modal handles its own back
+        if (s.viewMode === 'multicam' || s.viewMode === 'tv') {
+          actionsRef.current.setViewMode('popular' as ViewMode);
+          setFocusZone('toolbar');
+          setToolbarFocusIdx(0);
+          return true;
+        }
         if (!s.sidebarVisible) {
           actionsRef.current.toggleSidebar();
           setFocusZone('channels');
           return true;
         }
-        return false; // sidebar visible, no modal — let app close
+        return false;
       },
       onPlayPause: () => actionsRef.current.togglePlay(),
     }),
@@ -955,7 +980,7 @@ export function TVModeScreen() {
             {/* Country picker — globe icon with ISO code */}
             <View style={[
               styles.countryPickerWrap,
-              focusZone === 'toolbar' && toolbarFocusIdx === 1 && styles.toolbarItemFocused,
+              focusZone === 'toolbar' && toolbarFocusIdx === COUNTRY_IDX && styles.toolbarItemFocused,
             ]}>
               <GlobeIcon
                 size={24}
@@ -980,25 +1005,23 @@ export function TVModeScreen() {
               style={({ pressed }) => [
                 styles.toolbarBtn,
                 pressed && styles.toolbarBtnPressed,
-                focusZone === 'toolbar' && toolbarFocusIdx === 2 && styles.toolbarItemFocused,
+                focusZone === 'toolbar' && toolbarFocusIdx === SETTINGS_IDX && styles.toolbarItemFocused,
               ]}
             >
               <GearIcon size={24} color={colors.textSecondary} />
             </Pressable>
           </View>
 
-          {/* View mode selector — single segmented control, cycles with left/right */}
-          <View style={[
-            styles.modeSelector,
-            focusZone === 'toolbar' && toolbarFocusIdx === 0 && styles.toolbarItemFocused,
-          ]}>
-            {VIEW_MODES.map((mode) => (
+          {/* View mode selector — each mode is individually focusable */}
+          <View style={styles.modeSelector}>
+            {VIEW_MODES.map((mode, idx) => (
               <Pressable
                 key={mode}
                 onPress={() => setViewMode(mode)}
                 style={[
                   styles.modeItem,
                   viewMode === mode && styles.modeItemActive,
+                  focusZone === 'toolbar' && toolbarFocusIdx === idx && styles.modeItemFocused,
                 ]}
               >
                 <Text style={[styles.modeItemText, viewMode === mode && styles.modeItemTextActive]}>
@@ -1011,9 +1034,7 @@ export function TVModeScreen() {
           {/* Channel list header */}
           <View style={styles.listHeader}>
             <Text style={styles.listTitle}>
-              {viewMode === 'multicam'
-                ? `Slot ${multicamFocusedSlot + 1}`
-                : t(uiLanguage, 'channels')}
+              {t(uiLanguage, 'channels')}
             </Text>
             <Text style={styles.listCount}>
               {isTruncated ? `${MAX_VISIBLE}/${totalCount}` : totalCount}
@@ -1100,11 +1121,57 @@ export function TVModeScreen() {
       {/* Player section — flex:1 fills remaining space */}
       <View style={[styles.playerSection, sidebarVisible && styles.playerWithSidebar]}>
         {viewMode === 'multicam' ? (
-          <MulticamPlayer
-            slots={multicamSlots}
-            focusedSlot={multicamFocusedSlot}
-            onSlotPress={setMulticamFocusedSlot}
-          />
+          <>
+            <MulticamPlayer
+              slots={multicamSlots}
+              focusedSlot={multicamFocusedSlot}
+              onSlotPress={(idx) => {
+                setMulticamFocusedSlot(idx);
+                setMulticamPickerIdx(0);
+                setMulticamPickerOpen(true);
+              }}
+            />
+            {/* Channel picker overlay */}
+            {multicamPickerOpen && (
+              <View style={styles.multicamPicker}>
+                <View style={styles.multicamPickerHeader}>
+                  <Text style={styles.multicamPickerTitle}>
+                    Slot {multicamFocusedSlot + 1}
+                  </Text>
+                  <Pressable onPress={() => setMulticamPickerOpen(false)}>
+                    <Text style={styles.multicamPickerClose}>{'\u2715'}</Text>
+                  </Pressable>
+                </View>
+                <ScrollView style={styles.multicamPickerList}>
+                  {channels.map((ch, idx) => (
+                    <Pressable
+                      key={ch.id}
+                      onPress={() => {
+                        setMulticamSlots(prev => {
+                          const next = [...prev];
+                          next[multicamFocusedSlot] = ch;
+                          return next;
+                        });
+                        setMulticamPickerOpen(false);
+                      }}
+                      style={[
+                        styles.multicamPickerItem,
+                        idx === multicamPickerIdx && styles.multicamPickerItemFocused,
+                        multicamSlots[multicamFocusedSlot]?.id === ch.id && styles.multicamPickerItemActive,
+                      ]}
+                    >
+                      <Text style={styles.multicamPickerItemNum}>
+                        {channelNumberMap.get(ch.id) ?? idx + 1}
+                      </Text>
+                      <Text style={styles.multicamPickerItemName} numberOfLines={1}>
+                        {ch.name}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </>
         ) : currentChannel ? (
           <>
             <VideoPlayer />
@@ -1343,6 +1410,75 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
   },
+  modeItemFocused: {
+    borderWidth: 2,
+    borderColor: colors.focusBorder,
+  },
+
+  // Multicam channel picker overlay
+  multicamPicker: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: 300,
+    backgroundColor: 'rgba(18,18,22,0.95)',
+    zIndex: 10,
+    borderRightWidth: 1,
+    borderRightColor: colors.surfaceHighlight,
+  } as any,
+  multicamPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.surfaceHighlight,
+  },
+  multicamPickerTitle: {
+    color: colors.textPrimary,
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  multicamPickerClose: {
+    color: colors.textMuted,
+    fontSize: 18,
+    padding: 4,
+  },
+  multicamPickerList: {
+    flex: 1,
+  },
+  multicamPickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.surfaceLight,
+  },
+  multicamPickerItemFocused: {
+    backgroundColor: colors.surfaceLight,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.focusBorder,
+  },
+  multicamPickerItemActive: {
+    backgroundColor: colors.surfaceHighlight,
+  },
+  multicamPickerItemNum: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '600',
+    minWidth: 30,
+    textAlign: 'right',
+    marginRight: spacing.sm,
+  },
+  multicamPickerItemName: {
+    color: colors.textPrimary,
+    fontSize: 14,
+    flex: 1,
+  },
+
   countryPickerWrap: {
     position: 'relative',
     padding: 6,

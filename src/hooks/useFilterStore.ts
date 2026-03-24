@@ -81,7 +81,7 @@ export const useFilterStore = create<FilterStore>((set, get) => ({
     // Derive filter flags from view mode
     const showFavoritesOnly = mode === 'favorites';
     const showMainstreamOnly = mode === 'popular';
-    const sidebarVisible = mode !== 'tv';
+    const sidebarVisible = mode !== 'tv' && mode !== 'multicam';
     set({ viewMode: mode, showFavoritesOnly, showMainstreamOnly, sidebarVisible });
     updateSettings({ viewMode: mode, showFavoritesOnly, showMainstreamOnly, sidebarVisible });
   },
