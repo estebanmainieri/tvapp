@@ -3,7 +3,7 @@ import { View, Text, Image, Pressable, FlatList, StyleSheet, Platform, Modal } f
 import { VideoPlayer } from '../components/player/VideoPlayer';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorState } from '../components/common/ErrorState';
-import { useIPTVChannels, useIPTVCountries, useIPTVLanguages } from '../hooks/useIPTVChannels';
+import { useIPTVChannels, useIPTVCountries } from '../hooks/useIPTVChannels';
 import { usePlayerStore } from '../hooks/usePlayerStore';
 import { useFilterStore } from '../hooks/useFilterStore';
 import { useTVRemote } from '../hooks/useTVRemote';
@@ -67,7 +67,44 @@ function SelectPicker({ value, onChange, options }: {
   );
 }
 
-// Memoized channel list item for performance
+// Channel initial for lazy logo fallback
+function channelInitial(name: string): string {
+  return (name || '?')[0].toUpperCase();
+}
+
+// Lazy logo — shows initial letter, loads image only when visible
+const LazyLogo = memo(function LazyLogo({ uri, name }: { uri?: string; name: string }) {
+  const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  if (!uri || failed) {
+    return (
+      <View style={styles.itemLogoInitial}>
+        <Text style={styles.itemLogoInitialText}>{channelInitial(name)}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.itemLogoWrap}>
+      {!loaded && (
+        <View style={[styles.itemLogoInitial, styles.itemLogoInitialAbsolute]}>
+          <Text style={styles.itemLogoInitialText}>{channelInitial(name)}</Text>
+        </View>
+      )}
+      <Image
+        source={{ uri }}
+        style={[styles.itemLogo, !loaded && styles.itemLogoHidden]}
+        resizeMode="contain"
+        fadeDuration={0}
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+      />
+    </View>
+  );
+});
+
+// Memoized channel list item — simplified for TV performance
 const ChannelItem = memo(function ChannelItem({
   channel,
   number,
@@ -87,6 +124,7 @@ const ChannelItem = memo(function ChannelItem({
   onPress: () => void;
   onStarPress: () => void;
 }) {
+  const highlighted = isActive || isHighlighted;
   return (
     <Pressable
       onPress={onPress}
@@ -97,19 +135,14 @@ const ChannelItem = memo(function ChannelItem({
         pressed && styles.listItemPressed,
       ]}
     >
-      <View style={[styles.itemNumberBubble, (isActive || isHighlighted) && styles.itemNumberBubbleActive]}>
-        <Text style={[styles.itemNumber, (isActive || isHighlighted) && styles.itemTextActive]}>
-          {number}
-        </Text>
-      </View>
-      {channel.logo && (
-        <Image source={{ uri: channel.logo }} style={styles.itemLogo} resizeMode="contain" />
-      )}
+      <Text style={[styles.itemNumber, highlighted && styles.itemTextActive]}>
+        {number}
+      </Text>
       <Text
-        style={[styles.itemName, (isActive || isHighlighted) && styles.itemTextActive]}
+        style={[styles.itemName, highlighted && styles.itemTextActive]}
         numberOfLines={1}
       >
-        {channel.name || 'Unknown'}
+        {channel.name || '?'}
       </Text>
       <Pressable
         onPress={onStarPress}
@@ -125,6 +158,64 @@ const ChannelItem = memo(function ChannelItem({
       </Pressable>
     </Pressable>
   );
+});
+
+// Smart wrapper — only re-renders when THIS item's derived state changes
+const ChannelItemConnected = memo(function ChannelItemConnected({
+  channel, index, channelNumberMap, currentChannelId, focusZone, highlightedIdx, favoriteIds, handlersRef,
+}: {
+  channel: UnifiedChannel;
+  index: number;
+  channelNumberMap: Map<string, number>;
+  currentChannelId: string | null;
+  focusZone: string;
+  highlightedIdx: number;
+  favoriteIds: Set<string>;
+  handlersRef: React.MutableRefObject<{ handleChannelSelect: (ch: UnifiedChannel, i: number) => void; toggleFavorite: (ch: UnifiedChannel) => void }>;
+}) {
+  const isActive = currentChannelId === channel.id;
+  const isHighlighted = focusZone === 'channels' && highlightedIdx === index;
+  const starFocused = focusZone === 'star' && highlightedIdx === index;
+  const isFav = favoriteIds.has(channel.id);
+  const number = channelNumberMap.get(channel.id) ?? index + 1;
+
+  const onPress = useCallback(() => handlersRef.current.handleChannelSelect(channel, index), [channel, index, handlersRef]);
+  const onStarPress = useCallback(() => handlersRef.current.toggleFavorite(channel), [channel, handlersRef]);
+
+  return (
+    <ChannelItem
+      channel={channel}
+      number={number}
+      isActive={isActive}
+      isHighlighted={isHighlighted}
+      isFav={isFav}
+      starFocused={starFocused}
+      onPress={onPress}
+      onStarPress={onStarPress}
+    />
+  );
+}, (prev, next) => {
+  // Only re-render if THIS item's visual state changed
+  const prevActive = prev.currentChannelId === prev.channel.id;
+  const nextActive = next.currentChannelId === next.channel.id;
+  if (prevActive !== nextActive) return false;
+
+  const prevHL = prev.focusZone === 'channels' && prev.highlightedIdx === prev.index;
+  const nextHL = next.focusZone === 'channels' && next.highlightedIdx === next.index;
+  if (prevHL !== nextHL) return false;
+
+  const prevStar = prev.focusZone === 'star' && prev.highlightedIdx === prev.index;
+  const nextStar = next.focusZone === 'star' && next.highlightedIdx === next.index;
+  if (prevStar !== nextStar) return false;
+
+  const prevFav = prev.favoriteIds.has(prev.channel.id);
+  const nextFav = next.favoriteIds.has(next.channel.id);
+  if (prevFav !== nextFav) return false;
+
+  if (prev.channel.id !== next.channel.id) return false;
+  if (prev.channelNumberMap !== next.channelNumberMap) return false;
+
+  return true;
 });
 
 const modalLabelWithMargin = [{ marginTop: spacing.md }];
@@ -259,7 +350,6 @@ export function TVModeScreen() {
     sidebarVisible, toggleSidebar,
   } = useFilterStore();
   const { data: countries } = useIPTVCountries();
-  const { data: languages } = useIPTVLanguages();
   const flatListRef = useRef<FlatList>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [channelOsd, setChannelOsd] = useState<string | null>(null);
@@ -293,38 +383,47 @@ export function TVModeScreen() {
     toggleMute,
     reload,
   } = usePlayerStore();
-  const { favorites, toggleFavorite, isFavorite } = useFavorites();
+  const { favorites, favoriteIds, toggleFavorite, isFavorite } = useFavorites();
 
   // Base list per country+language — assigns stable channel numbers
+  // Data comes pre-sorted from buildChannelIndex, no need to re-sort
   const allChannels = useMemo(() => {
     if (!channelIndex) return { list: [] as UnifiedChannel[], numberMap: new Map<string, number>() };
     let list = channelIndex.all.filter(ch => ch.country === selectedCountry);
     if (selectedLanguage !== 'all') {
       list = list.filter(ch => ch.language === selectedLanguage);
     }
-    const sorted = [...list].sort((a, b) =>
-      (a.name || '').localeCompare(b.name || '')
-    );
-    // Assign stable number per country list (persists across filters)
     const numberMap = new Map<string, number>();
-    sorted.forEach((ch, i) => numberMap.set(ch.id, i + 1));
-    return { list: sorted, numberMap };
+    for (let i = 0; i < list.length; i++) {
+      numberMap.set(list[i].id, i + 1);
+    }
+    return { list, numberMap };
   }, [channelIndex, selectedCountry, selectedLanguage]);
 
   const channelNumberMap = allChannels.numberMap;
 
-  const favIdSet = useMemo(() => new Set(favorites.map(f => f.id)), [favorites]);
+  const MAX_VISIBLE = 100;
+  const [showAllChannels, setShowAllChannels] = useState(false);
 
-  const channels = useMemo(() => {
+  // Reset "show all" when country or filters change
+  useEffect(() => {
+    setShowAllChannels(false);
+  }, [selectedCountry, showFavoritesOnly, showMainstreamOnly]);
+
+  const filteredChannels = useMemo(() => {
     let list = allChannels.list;
     if (showFavoritesOnly) {
-      list = list.filter(ch => favIdSet.has(ch.id));
+      list = list.filter(ch => favoriteIds.has(ch.id));
     }
     if (showMainstreamOnly) {
       list = list.filter(ch => ch.isMainstream);
     }
     return list;
-  }, [allChannels, showFavoritesOnly, showMainstreamOnly, favIdSet]);
+  }, [allChannels, showFavoritesOnly, showMainstreamOnly, favoriteIds]);
+
+  const totalCount = filteredChannels.length;
+  const isTruncated = !showAllChannels && !showFavoritesOnly && !showMainstreamOnly && totalCount > MAX_VISIBLE;
+  const channels = isTruncated ? filteredChannels.slice(0, MAX_VISIBLE) : filteredChannels;
 
   // Auto-play first channel only on initial mount (not on filter changes)
   const hasAutoPlayed = useRef(false);
@@ -354,31 +453,49 @@ export function TVModeScreen() {
     { id: 'fullscreen', action: toggleSidebar },
   ], [channels, currentChannel, currentIdx, play, togglePlay, toggleMute, toggleFavorite, reload, toggleSidebar]);
 
-  // TV remote handlers — D-pad navigation with focus zones
+  // TV remote handlers — use refs so useTVRemote never re-attaches
+  const stateRef = useRef({
+    focusZone, highlightedIdx, controlFocusIdx, toolbarFocusIdx,
+    channels, sidebarVisible, settingsOpen,
+  });
+  stateRef.current = {
+    focusZone, highlightedIdx, controlFocusIdx, toolbarFocusIdx,
+    channels, sidebarVisible, settingsOpen,
+  };
+
+  const actionsRef = useRef({
+    channelUp, channelDown, play, togglePlay, toggleMute, toggleSidebar,
+    toggleFavorite, toggleFavoritesOnly, toggleMainstreamOnly, controlActions,
+  });
+  actionsRef.current = {
+    channelUp, channelDown, play, togglePlay, toggleMute, toggleSidebar,
+    toggleFavorite, toggleFavoritesOnly, toggleMainstreamOnly, controlActions,
+  };
+
   const remoteHandlers = useMemo(
     () => ({
-      // Down arrow
       onDown: () => {
-        if (focusZone === 'toolbar') {
+        const s = stateRef.current;
+        if (s.focusZone === 'toolbar') {
           setFocusZone('channels');
-          if (channels.length > 0) setHighlightedIdx(0);
-        } else if (focusZone === 'channels') {
-          if (sidebarVisible) {
-            if (channels.length > 0) {
-              setHighlightedIdx(prev => prev < 0 ? 0 : Math.min(prev + 1, channels.length - 1));
+          if (s.channels.length > 0) setHighlightedIdx(0);
+        } else if (s.focusZone === 'channels') {
+          if (s.sidebarVisible) {
+            if (s.channels.length > 0) {
+              setHighlightedIdx(prev => prev < 0 ? 0 : Math.min(prev + 1, s.channels.length - 1));
             }
           } else {
-            channelDown();
+            actionsRef.current.channelDown();
           }
-        } else if (focusZone === 'controls' || focusZone === 'star') {
+        } else if (s.focusZone === 'controls' || s.focusZone === 'star') {
           setFocusZone('channels');
         }
       },
-      // Up arrow
       onUp: () => {
-        if (focusZone === 'channels') {
-          if (sidebarVisible) {
-            if (highlightedIdx <= 0) {
+        const s = stateRef.current;
+        if (s.focusZone === 'channels') {
+          if (s.sidebarVisible) {
+            if (s.highlightedIdx <= 0) {
               setFocusZone('toolbar');
               setToolbarFocusIdx(0);
               setHighlightedIdx(-1);
@@ -386,70 +503,69 @@ export function TVModeScreen() {
               setHighlightedIdx(prev => prev - 1);
             }
           } else {
-            channelUp();
+            actionsRef.current.channelUp();
           }
-        } else if (focusZone === 'controls' || focusZone === 'star') {
+        } else if (s.focusZone === 'controls' || s.focusZone === 'star') {
           setFocusZone('channels');
         }
       },
-      // Right
       onRight: () => {
-        if (focusZone === 'toolbar') {
+        const s = stateRef.current;
+        if (s.focusZone === 'toolbar') {
           setToolbarFocusIdx(prev => Math.min(prev + 1, 3));
-        } else if (focusZone === 'channels' && sidebarVisible) {
+        } else if (s.focusZone === 'channels' && s.sidebarVisible) {
           setFocusZone('star');
-        } else if (focusZone === 'star') {
+        } else if (s.focusZone === 'star') {
           setFocusZone('controls');
           setControlFocusIdx(0);
-        } else if (focusZone === 'controls') {
-          setControlFocusIdx(prev => Math.min(prev + 1, 6)); // 7 control buttons (0-6)
+        } else if (s.focusZone === 'controls') {
+          setControlFocusIdx(prev => Math.min(prev + 1, 6));
         }
       },
-      // Left
       onLeft: () => {
-        if (focusZone === 'toolbar') {
+        const s = stateRef.current;
+        if (s.focusZone === 'toolbar') {
           setToolbarFocusIdx(prev => Math.max(prev - 1, 0));
-        } else if (focusZone === 'controls') {
-          if (controlFocusIdx > 0) {
+        } else if (s.focusZone === 'controls') {
+          if (s.controlFocusIdx > 0) {
             setControlFocusIdx(prev => prev - 1);
           } else {
             setFocusZone('star');
           }
-        } else if (focusZone === 'star') {
+        } else if (s.focusZone === 'star') {
           setFocusZone('channels');
-        } else if (!sidebarVisible) {
-          toggleSidebar();
+        } else if (!s.sidebarVisible) {
+          actionsRef.current.toggleSidebar();
           setFocusZone('channels');
         }
       },
-      // Select/Enter = confirm action in current focus zone
       onSelect: () => {
-        if (focusZone === 'toolbar') {
-          // 0=Favorites, 1=Popular, 2=Country (no-op, use native picker), 3=Settings
-          if (toolbarFocusIdx === 0) toggleFavoritesOnly();
-          else if (toolbarFocusIdx === 1) toggleMainstreamOnly();
-          else if (toolbarFocusIdx === 3) setSettingsOpen(true);
-        } else if (focusZone === 'channels' && highlightedIdx >= 0 && highlightedIdx < channels.length) {
-          play(channels[highlightedIdx], channels, highlightedIdx);
-        } else if (focusZone === 'star' && highlightedIdx >= 0 && highlightedIdx < channels.length) {
-          toggleFavorite(channels[highlightedIdx]);
-        } else if (focusZone === 'controls') {
-          controlActions[controlFocusIdx]?.action();
+        const s = stateRef.current;
+        const a = actionsRef.current;
+        if (s.focusZone === 'toolbar') {
+          if (s.toolbarFocusIdx === 0) a.toggleFavoritesOnly();
+          else if (s.toolbarFocusIdx === 1) a.toggleMainstreamOnly();
+          else if (s.toolbarFocusIdx === 3) setSettingsOpen(true);
+        } else if (s.focusZone === 'channels' && s.highlightedIdx >= 0 && s.highlightedIdx < s.channels.length) {
+          a.play(s.channels[s.highlightedIdx], s.channels, s.highlightedIdx);
+        } else if (s.focusZone === 'star' && s.highlightedIdx >= 0 && s.highlightedIdx < s.channels.length) {
+          a.toggleFavorite(s.channels[s.highlightedIdx]);
+        } else if (s.focusZone === 'controls') {
+          a.controlActions[s.controlFocusIdx]?.action();
         }
       },
       onMenu: () => {
-        if (!sidebarVisible) {
-          toggleSidebar();
+        const s = stateRef.current;
+        if (!s.sidebarVisible) {
+          actionsRef.current.toggleSidebar();
           setFocusZone('channels');
-        } else if (settingsOpen) {
+        } else if (s.settingsOpen) {
           setSettingsOpen(false);
         }
       },
-      onPlayPause: togglePlay,
+      onPlayPause: () => actionsRef.current.togglePlay(),
     }),
-    [focusZone, highlightedIdx, controlFocusIdx, toolbarFocusIdx, channels, sidebarVisible,
-     channelUp, channelDown, play, togglePlay, toggleMute, toggleSidebar,
-     toggleFavorite, toggleFavoritesOnly, toggleMainstreamOnly, settingsOpen],
+    [], // stable — reads from refs
   );
 
   useTVRemote(remoteHandlers);
@@ -496,23 +612,25 @@ export function TVModeScreen() {
       }));
   }, [countries]);
 
-  // FlatList renderItem — memoized
+  // Stable callbacks via ref — prevents renderItem from depending on volatile state
+  const handlersRef = useRef({ handleChannelSelect, toggleFavorite });
+  handlersRef.current = { handleChannelSelect, toggleFavorite };
+
+  // FlatList renderItem — only depends on stable refs
   const renderChannelItem = useCallback(({ item, index }: { item: UnifiedChannel; index: number }) => {
-    const isActive = currentChannel?.id === item.id;
-    const isHighlighted = focusZone === 'channels' && highlightedIdx === index;
     return (
-      <ChannelItem
+      <ChannelItemConnected
         channel={item}
-        number={channelNumberMap.get(item.id) ?? index + 1}
-        isActive={isActive}
-        isHighlighted={isHighlighted}
-        isFav={isFavorite(item.id)}
-        starFocused={focusZone === 'star' && highlightedIdx === index}
-        onPress={() => handleChannelSelect(item, index)}
-        onStarPress={() => toggleFavorite(item)}
+        index={index}
+        channelNumberMap={channelNumberMap}
+        currentChannelId={currentChannel?.id ?? null}
+        focusZone={focusZone}
+        highlightedIdx={highlightedIdx}
+        favoriteIds={favoriteIds}
+        handlersRef={handlersRef}
       />
     );
-  }, [currentChannel?.id, focusZone, highlightedIdx, channelNumberMap, isFavorite, handleChannelSelect, toggleFavorite]);
+  }, [channelNumberMap, currentChannel?.id, focusZone, highlightedIdx, favoriteIds]);
 
   const getItemLayout = useCallback((_: any, index: number) => ({
     length: ITEM_HEIGHT,
@@ -607,7 +725,9 @@ export function TVModeScreen() {
           {/* Channel list header */}
           <View style={styles.listHeader}>
             <Text style={styles.listTitle}>{t(uiLanguage, 'channels')}</Text>
-            <Text style={styles.listCount}>{channels.length}</Text>
+            <Text style={styles.listCount}>
+              {isTruncated ? `${MAX_VISIBLE}/${totalCount}` : totalCount}
+            </Text>
           </View>
 
           {/* Channel list — FlatList for performance */}
@@ -629,6 +749,16 @@ export function TVModeScreen() {
                 animated: true,
               });
             }}
+            ListFooterComponent={isTruncated ? (
+              <Pressable
+                onPress={() => setShowAllChannels(true)}
+                style={({ pressed }) => [styles.showAllBtn, pressed && styles.showAllBtnPressed]}
+              >
+                <Text style={styles.showAllBtnText}>
+                  {t(uiLanguage, 'showAll')} ({totalCount})
+                </Text>
+              </Pressable>
+            ) : null}
           />
         </View>
       )}
@@ -926,31 +1056,47 @@ const styles = StyleSheet.create({
   listItemPressed: {
     backgroundColor: colors.surfaceLight,
   },
-  itemNumberBubble: {
-    minWidth: 28,
-    height: 22,
-    borderRadius: 4,
-    backgroundColor: colors.surfaceLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-    paddingHorizontal: 4,
-  },
-  itemNumberBubbleActive: {
-    backgroundColor: colors.accent,
-  },
   itemNumber: {
     ...typography.caption,
     color: colors.textMuted,
     fontSize: 11,
-    textAlign: 'center',
     fontWeight: '600',
+    minWidth: 28,
+    textAlign: 'right',
+    marginRight: spacing.sm,
   },
+  itemLogoWrap: {
+    width: 24,
+    height: 20,
+    marginRight: spacing.xs,
+    position: 'relative',
+  } as any,
   itemLogo: {
     width: 24,
-    height: 18,
-    marginRight: spacing.xs,
+    height: 20,
     borderRadius: 2,
+  },
+  itemLogoHidden: {
+    opacity: 0,
+    position: 'absolute',
+  } as any,
+  itemLogoInitial: {
+    width: 24,
+    height: 20,
+    borderRadius: 2,
+    backgroundColor: colors.surfaceHighlight,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemLogoInitialAbsolute: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  } as any,
+  itemLogoInitialText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
   },
   itemName: {
     ...typography.body,
@@ -978,6 +1124,24 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 2,
     borderColor: colors.focusBorder,
+  },
+
+  showAllBtn: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: colors.surfaceLight,
+    marginHorizontal: spacing.sm,
+    marginVertical: spacing.xs,
+    borderRadius: 8,
+  } as any,
+  showAllBtnPressed: {
+    backgroundColor: colors.surfaceHighlight,
+  },
+  showAllBtnText: {
+    ...typography.caption,
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '600',
   },
 
   // Player — fills remaining space

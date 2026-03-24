@@ -17,16 +17,21 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   // Actions
   play: (channel: UnifiedChannel, list: UnifiedChannel[], index: number) => {
-    set({
+    const prev = get();
+    // Avoid re-setting channelList if it's the same array reference
+    const updates: any = {
       isPlaying: true,
       currentChannel: channel,
-      channelList: list,
       channelIndex: index,
       showControls: true,
       showChannelOverlay: false,
       error: null,
       isBuffering: true,
-    });
+    };
+    if (prev.channelList !== list) {
+      updates.channelList = list;
+    }
+    set(updates);
   },
 
   channelUp: () => {

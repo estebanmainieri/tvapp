@@ -81,7 +81,7 @@ export const useFilterStore = create<FilterStore>((set, get) => ({
           selectedLanguage: settings.preferredLanguage ?? 'all',
           uiLanguage: settings.uiLanguage ?? getDefaultLangForCountry(country),
           showFavoritesOnly: settings.showFavoritesOnly ?? false,
-          showMainstreamOnly: settings.showMainstreamOnly ?? false,
+          showMainstreamOnly: settings.showMainstreamOnly ?? true,
           sidebarVisible: settings.sidebarVisible ?? true,
           initialized: true,
         });

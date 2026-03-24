@@ -19,6 +19,7 @@ const translations: Record<string, Record<string, string>> = {
     updateAvailable: 'Actualización disponible',
     updating: 'Actualizando...',
     upToDate: 'App actualizada',
+    showAll: 'Mostrar todos',
   },
   en: {
     settings: 'Settings',
@@ -40,6 +41,7 @@ const translations: Record<string, Record<string, string>> = {
     updateAvailable: 'Update available',
     updating: 'Updating...',
     upToDate: 'App is up to date',
+    showAll: 'Show all',
   },
   pt: {
     settings: 'Configurações',
@@ -61,6 +63,7 @@ const translations: Record<string, Record<string, string>> = {
     updateAvailable: 'Atualização disponível',
     updating: 'Atualizando...',
     upToDate: 'App atualizado',
+    showAll: 'Mostrar todos',
   },
   fr: {
     settings: 'Paramètres',
@@ -82,6 +85,7 @@ const translations: Record<string, Record<string, string>> = {
     updateAvailable: 'Mise à jour disponible',
     updating: 'Mise à jour...',
     upToDate: 'App à jour',
+    showAll: 'Tout afficher',
   },
   de: {
     settings: 'Einstellungen',
@@ -103,6 +107,7 @@ const translations: Record<string, Record<string, string>> = {
     updateAvailable: 'Update verfügbar',
     updating: 'Aktualisiere...',
     upToDate: 'App ist aktuell',
+    showAll: 'Alle anzeigen',
   },
 };
 

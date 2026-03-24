@@ -121,6 +121,10 @@ export function buildChannelIndex(
     }
   }
 
+  // Pre-sort alphabetically — avoids repeated sort in UI
+  const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
+  all.sort((a, b) => collator.compare(a.name, b.name));
+
   return { all, byCategory, byCountry, byId };
 }
 

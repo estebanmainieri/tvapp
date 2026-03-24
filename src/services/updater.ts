@@ -3,7 +3,7 @@ import { APP_VERSION } from '../version';
 
 const GITHUB_OWNER = 'estebanmainieri';
 const GITHUB_REPO = 'tvapp';
-const CHECK_INTERVAL = 60 * 60 * 1000; // 1 hour
+const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
 const LATEST_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 
 export interface UpdateInfo {
@@ -86,10 +86,12 @@ export function startBackgroundUpdateCheck(
   // Then every hour
   checkTimer = setInterval(doCheck, CHECK_INTERVAL);
 
-  // Also check when app comes back from background
-  appStateSubscription = AppState.addEventListener('change', (state) => {
-    if (state === 'active') doCheck();
-  });
+  // Also check when app comes back from background (native only)
+  if (Platform.OS !== 'web') {
+    appStateSubscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') doCheck();
+    });
+  }
 }
 
 export function stopBackgroundUpdateCheck() {

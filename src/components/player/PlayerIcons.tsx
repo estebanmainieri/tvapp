@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { View, Platform } from 'react-native';
 
 interface IconProps {
@@ -7,15 +7,17 @@ interface IconProps {
 }
 
 const SvgIcon = memo(function SvgIcon({ size = 20, color = '#fff', path, viewBox = '0 0 24 24' }: IconProps & { path: string; viewBox?: string }) {
+  const html = useMemo(
+    () => ({ __html: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${viewBox}" fill="${color}">${path}</svg>` }),
+    [size, color, path, viewBox],
+  );
+  const style = useMemo(
+    () => ({ width: size, height: size, display: 'flex' as const, alignItems: 'center' as const, justifyContent: 'center' as const }),
+    [size],
+  );
+
   if (Platform.OS === 'web') {
-    return (
-      <div
-        style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        dangerouslySetInnerHTML={{
-          __html: `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${viewBox}" fill="${color}">${path}</svg>`,
-        }}
-      />
-    ) as any;
+    return (<div style={style} dangerouslySetInnerHTML={html} />) as any;
   }
   return <View style={{ width: size, height: size }} />;
 });

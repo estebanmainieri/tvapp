@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { UnifiedChannel } from '../types';
 import {
   getFavorites,
@@ -35,20 +35,29 @@ export function useFavorites() {
     return new Set((query.data ?? []).map(f => f.id));
   }, [query.data]);
 
-  const isFavorite = (channelId: string) => favoriteIds.has(channelId);
+  const isFavorite = useCallback(
+    (channelId: string) => favoriteIds.has(channelId),
+    [favoriteIds],
+  );
 
-  return {
-    favorites: query.data ?? [],
-    isLoading: query.isLoading,
-    addFavorite: addMutation.mutate,
-    removeFavorite: removeMutation.mutate,
-    toggleFavorite: (channel: UnifiedChannel) => {
-      if (isFavorite(channel.id)) {
+  const toggleFavorite = useCallback(
+    (channel: UnifiedChannel) => {
+      if (favoriteIds.has(channel.id)) {
         removeMutation.mutate(channel.id);
       } else {
         addMutation.mutate(channel);
       }
     },
+    [favoriteIds, addMutation, removeMutation],
+  );
+
+  return {
+    favorites: query.data ?? [],
+    favoriteIds,
+    isLoading: query.isLoading,
+    addFavorite: addMutation.mutate,
+    removeFavorite: removeMutation.mutate,
+    toggleFavorite,
     isFavorite,
   };
 }

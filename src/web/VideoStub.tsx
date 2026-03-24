@@ -64,11 +64,13 @@ function Video({
       const hls = new Hls({
         enableWorker: false,
         lowLatencyMode: false,
-        maxBufferLength: 15,
-        maxMaxBufferLength: 30,
-        maxBufferSize: 30 * 1000 * 1000,
-        startLevel: -1,
+        maxBufferLength: 10,
+        maxMaxBufferLength: 20,
+        maxBufferSize: 15 * 1000 * 1000, // 15MB — low RAM devices
+        maxBufferHole: 0.5,
+        startLevel: 0, // start with lowest quality, let ABR switch up
         abrEwmaDefaultEstimate: 500000,
+        abrBandWidthUpFactor: 0.7, // conservative upswitch
         xhrSetup: (xhr) => {
           xhr.timeout = 15000;
           if (headerEntries) {
