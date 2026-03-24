@@ -8,6 +8,7 @@ export interface AppSettings {
   showFavoritesOnly?: boolean;
   showMainstreamOnly?: boolean;
   sidebarVisible?: boolean;
+  viewMode?: string;
 }
 
 export async function getSettings(): Promise<AppSettings> {

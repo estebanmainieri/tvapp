@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { getSettings, updateSettings } from '../data/settings';
 import { getDefaultLangForCountry } from '../i18n/translations';
 
+export type ViewMode = 'all' | 'popular' | 'favorites' | 'tv' | 'multicam';
+
 interface FilterState {
   selectedCountry: string; // country code or 'all'
   selectedLanguage: string; // language code or 'all'
@@ -9,6 +11,7 @@ interface FilterState {
   showFavoritesOnly: boolean;
   showMainstreamOnly: boolean;
   sidebarVisible: boolean;
+  viewMode: ViewMode;
   initialized: boolean;
 }
 
@@ -20,6 +23,7 @@ interface FilterActions {
   toggleMainstreamOnly: () => void;
   toggleSidebar: () => void;
   setSidebarVisible: (visible: boolean) => void;
+  setViewMode: (mode: ViewMode) => void;
   initialize: (detectedCountry: string) => void;
 }
 
@@ -32,6 +36,7 @@ export const useFilterStore = create<FilterStore>((set, get) => ({
   showFavoritesOnly: false,
   showMainstreamOnly: false,
   sidebarVisible: true,
+  viewMode: 'popular' as ViewMode,
   initialized: false,
 
   setCountry: (code: string) => {
@@ -72,10 +77,20 @@ export const useFilterStore = create<FilterStore>((set, get) => ({
     updateSettings({ sidebarVisible: visible });
   },
 
+  setViewMode: (mode: ViewMode) => {
+    // Derive filter flags from view mode
+    const showFavoritesOnly = mode === 'favorites';
+    const showMainstreamOnly = mode === 'popular';
+    const sidebarVisible = mode !== 'tv';
+    set({ viewMode: mode, showFavoritesOnly, showMainstreamOnly, sidebarVisible });
+    updateSettings({ viewMode: mode, showFavoritesOnly, showMainstreamOnly, sidebarVisible });
+  },
+
   initialize: (detectedCountry: string) => {
     getSettings()
       .then(settings => {
         const country = settings.preferredCountry || detectedCountry || 'US';
+        const viewMode = (settings.viewMode as ViewMode) ?? 'popular';
         set({
           selectedCountry: country,
           selectedLanguage: settings.preferredLanguage ?? 'all',
@@ -83,6 +98,7 @@ export const useFilterStore = create<FilterStore>((set, get) => ({
           showFavoritesOnly: settings.showFavoritesOnly ?? false,
           showMainstreamOnly: settings.showMainstreamOnly ?? true,
           sidebarVisible: settings.sidebarVisible ?? true,
+          viewMode,
           initialized: true,
         });
       })
