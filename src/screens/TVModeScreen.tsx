@@ -923,11 +923,15 @@ export function TVModeScreen() {
           }
           return;
         }
-        // Multicam fullscreen — Select on a slot opens the sidebar
+        // Multicam fullscreen — Select toggles the sidebar
         if (s.viewMode === 'multicam') {
-          a.setMulticamPickerOpen(true);
-          setFocusZone('filters');
-          setToolbarFocusIdx(0);
+          if (s.multicamPickerOpen) {
+            a.setMulticamPickerOpen(false);
+          } else {
+            a.setMulticamPickerOpen(true);
+            setFocusZone('filters');
+            setToolbarFocusIdx(0);
+          }
           return;
         }
         // Toolbar: mode picker icon or settings
@@ -1211,9 +1215,11 @@ export function TVModeScreen() {
               onSlotPress={(idx) => {
                 setMulticamFocusedSlot(idx);
                 if (Platform.OS === 'web') {
-                  setMulticamPickerOpen(true);
-                  setFocusZone('filters');
-                  setToolbarFocusIdx(0);
+                  setMulticamPickerOpen(prev => !prev);
+                  if (!multicamPickerOpen) {
+                    setFocusZone('filters');
+                    setToolbarFocusIdx(0);
+                  }
                 }
               }}
             />
