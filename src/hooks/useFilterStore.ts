@@ -2,16 +2,16 @@ import { create } from 'zustand';
 import { getSettings, updateSettings } from '../data/settings';
 import { getDefaultLangForCountry } from '../i18n/translations';
 
-export type ViewMode = 'all' | 'popular' | 'favorites' | 'tv' | 'multicam';
+export type ViewMode = 'guide' | 'tv' | 'multicam';
+export type GuideFilter = 'popular' | 'favorites' | 'all';
 
 interface FilterState {
   selectedCountry: string; // country code or 'all'
   selectedLanguage: string; // language code or 'all'
   uiLanguage: string;
-  showFavoritesOnly: boolean;
-  showMainstreamOnly: boolean;
   sidebarVisible: boolean;
   viewMode: ViewMode;
+  guideFilter: GuideFilter;
   initialized: boolean;
 }
 
@@ -19,11 +19,10 @@ interface FilterActions {
   setCountry: (code: string) => void;
   setLanguage: (code: string) => void;
   setUiLanguage: (code: string) => void;
-  toggleFavoritesOnly: () => void;
-  toggleMainstreamOnly: () => void;
   toggleSidebar: () => void;
   setSidebarVisible: (visible: boolean) => void;
   setViewMode: (mode: ViewMode) => void;
+  setGuideFilter: (filter: GuideFilter) => void;
   initialize: (detectedCountry: string) => void;
 }
 
@@ -33,10 +32,9 @@ export const useFilterStore = create<FilterStore>((set, get) => ({
   selectedCountry: 'US',
   selectedLanguage: 'all',
   uiLanguage: 'en',
-  showFavoritesOnly: false,
-  showMainstreamOnly: false,
   sidebarVisible: true,
-  viewMode: 'popular' as ViewMode,
+  viewMode: 'guide' as ViewMode,
+  guideFilter: 'popular' as GuideFilter,
   initialized: false,
 
   setCountry: (code: string) => {
@@ -54,18 +52,6 @@ export const useFilterStore = create<FilterStore>((set, get) => ({
     updateSettings({ uiLanguage: code });
   },
 
-  toggleFavoritesOnly: () => {
-    const next = !get().showFavoritesOnly;
-    set({ showFavoritesOnly: next });
-    updateSettings({ showFavoritesOnly: next });
-  },
-
-  toggleMainstreamOnly: () => {
-    const next = !get().showMainstreamOnly;
-    set({ showMainstreamOnly: next });
-    updateSettings({ showMainstreamOnly: next });
-  },
-
   toggleSidebar: () => {
     const next = !get().sidebarVisible;
     set({ sidebarVisible: next });
@@ -78,27 +64,32 @@ export const useFilterStore = create<FilterStore>((set, get) => ({
   },
 
   setViewMode: (mode: ViewMode) => {
-    // Derive filter flags from view mode
-    const showFavoritesOnly = mode === 'favorites';
-    const showMainstreamOnly = mode === 'popular';
-    const sidebarVisible = mode !== 'tv' && mode !== 'multicam';
-    set({ viewMode: mode, showFavoritesOnly, showMainstreamOnly, sidebarVisible });
-    updateSettings({ viewMode: mode, showFavoritesOnly, showMainstreamOnly, sidebarVisible });
+    const sidebarVisible = mode === 'guide';
+    set({ viewMode: mode, sidebarVisible });
+    updateSettings({ viewMode: mode, sidebarVisible });
+  },
+
+  setGuideFilter: (filter: GuideFilter) => {
+    set({ guideFilter: filter });
+    updateSettings({ guideFilter: filter });
   },
 
   initialize: (detectedCountry: string) => {
     getSettings()
       .then(settings => {
         const country = settings.preferredCountry || detectedCountry || 'US';
-        const viewMode = (settings.viewMode as ViewMode) ?? 'popular';
+        const viewMode = (settings.viewMode as ViewMode) ?? 'guide';
+        // Migrate old viewModes to new ones
+        const validModes: ViewMode[] = ['guide', 'tv', 'multicam'];
+        const finalViewMode = validModes.includes(viewMode) ? viewMode : 'guide';
+        const guideFilter = (settings.guideFilter as GuideFilter) ?? 'popular';
         set({
           selectedCountry: country,
           selectedLanguage: settings.preferredLanguage ?? 'all',
           uiLanguage: settings.uiLanguage ?? getDefaultLangForCountry(country),
-          showFavoritesOnly: settings.showFavoritesOnly ?? false,
-          showMainstreamOnly: settings.showMainstreamOnly ?? true,
           sidebarVisible: settings.sidebarVisible ?? true,
-          viewMode,
+          viewMode: finalViewMode,
+          guideFilter,
           initialized: true,
         });
       })

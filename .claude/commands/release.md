@@ -1,4 +1,4 @@
-# Release Tve+
+# Release Teve+
 
 Build and publish a new release. Automatically detects release type and version bump.
 

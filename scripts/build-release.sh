@@ -32,7 +32,7 @@ esac
 
 NEW_VERSION="$MAJOR.$MINOR.$PATCH"
 TAG="v$NEW_VERSION"
-APK_NAME="tveplus-$NEW_VERSION.apk"
+APK_NAME="teveplus-$NEW_VERSION.apk"
 
 echo "📦 Building version $CURRENT → $NEW_VERSION"
 
@@ -74,7 +74,7 @@ git push origin "$TAG"
 # Create GitHub release
 echo "🚀 Creating GitHub release $TAG..."
 gh release create "$TAG" "$APK_DST" \
-  --title "Tve+ $TAG" \
+  --title "Teve+ $TAG" \
   --notes "Release $NEW_VERSION" \
   --latest
 

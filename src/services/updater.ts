@@ -145,7 +145,7 @@ export async function applyUpdate(update: UpdateInfo): Promise<void> {
     if (update.downloadUrl) {
       const hasPermission = await ensureInstallPermission();
       if (!hasPermission) {
-        throw new Error('Install permission not granted. Go to Settings > Apps > Tve+ > Install unknown apps');
+        throw new Error('Install permission not granted. Go to Settings > Apps > Teve+ > Install unknown apps');
       }
 
       console.log('[Updater] Starting APK download and install...');

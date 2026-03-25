@@ -9,6 +9,7 @@ export interface AppSettings {
   showMainstreamOnly?: boolean;
   sidebarVisible?: boolean;
   viewMode?: string;
+  guideFilter?: string;
 }
 
 export async function getSettings(): Promise<AppSettings> {

@@ -125,3 +125,11 @@ export const GlobeIcon = memo(function GlobeIcon({ size = 20, color = '#fff', la
     </Svg>
   );
 });
+
+// Layout/mode icon — three horizontal bars representing different view modes
+export const LayoutIcon = memo(function LayoutIcon({ size = 20, color = '#fff' }: IconProps) {
+  const layoutPath = 'M3,5h18v2H3V5z M3,11h18v2H3V11z M3,17h18v2H3V17z';
+  if (Platform.OS === 'web') return <WebSvgIcon size={size} color={color} path={`<path d="${layoutPath}"/>`} />;
+  if (!Svg) return <View style={{ width: size, height: size }} />;
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}><Path d={layoutPath} /></Svg>;
+});

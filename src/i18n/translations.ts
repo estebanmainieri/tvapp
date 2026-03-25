@@ -36,6 +36,9 @@ const translations: Record<string, Record<string, string>> = {
     remove: 'Quitar',
     enabled: 'Activa',
     disabled: 'Inactiva',
+    country: 'País',
+    modeGuide: 'Guía',
+    selectMode: 'Modo',
   },
   en: {
     settings: 'Settings',
@@ -74,6 +77,9 @@ const translations: Record<string, Record<string, string>> = {
     remove: 'Remove',
     enabled: 'Enabled',
     disabled: 'Disabled',
+    country: 'Country',
+    modeGuide: 'Guide',
+    selectMode: 'Mode',
   },
   pt: {
     settings: 'Configurações',
@@ -112,6 +118,9 @@ const translations: Record<string, Record<string, string>> = {
     remove: 'Remover',
     enabled: 'Ativa',
     disabled: 'Inativa',
+    country: 'País',
+    modeGuide: 'Guia',
+    selectMode: 'Modo',
   },
   fr: {
     settings: 'Paramètres',
@@ -150,6 +159,9 @@ const translations: Record<string, Record<string, string>> = {
     remove: 'Supprimer',
     enabled: 'Active',
     disabled: 'Inactive',
+    country: 'Pays',
+    modeGuide: 'Guide',
+    selectMode: 'Mode',
   },
   de: {
     settings: 'Einstellungen',
@@ -188,6 +200,9 @@ const translations: Record<string, Record<string, string>> = {
     remove: 'Entfernen',
     enabled: 'Aktiv',
     disabled: 'Inaktiv',
+    country: 'Land',
+    modeGuide: 'Guide',
+    selectMode: 'Modus',
   },
 };
 
