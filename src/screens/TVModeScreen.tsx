@@ -16,9 +16,9 @@ import { t, UI_LANGUAGES } from '../i18n/translations';
 import { checkForUpdate, applyUpdate, startBackgroundUpdateCheck, stopBackgroundUpdateCheck, UpdateInfo } from '../services/updater';
 import {
   PlayIcon, PauseIcon, VolumeOnIcon, VolumeMuteIcon,
-  ReloadIcon, FullscreenIcon,
+  ReloadIcon,
   SkipPrevIcon, SkipNextIcon, GearIcon, LayoutIcon,
-  GuideIcon, TVIcon, GridIcon,
+  GuideIcon, GridIcon,
 } from '../components/player/PlayerIcons';
 
 const selectStyle = {
@@ -166,7 +166,7 @@ const ChannelItemConnected = memo(function ChannelItemConnected({
 }) {
   const isActive = currentChannelId === channel.id;
   const isHighlighted = focusZone === 'channels' && highlightedIdx === index;
-  const starFocused = focusZone === 'star' && highlightedIdx === index;
+  const starFocused = false;
   const isFav = favoriteIds.has(channel.id);
   const number = channelNumberMap.get(channel.id) ?? index + 1;
 
@@ -195,9 +195,7 @@ const ChannelItemConnected = memo(function ChannelItemConnected({
   const nextHL = next.focusZone === 'channels' && next.highlightedIdx === next.index;
   if (prevHL !== nextHL) return false;
 
-  const prevStar = prev.focusZone === 'star' && prev.highlightedIdx === prev.index;
-  const nextStar = next.focusZone === 'star' && next.highlightedIdx === next.index;
-  if (prevStar !== nextStar) return false;
+  // star zone removed from D-pad navigation
 
   const prevFav = prev.favoriteIds.has(prev.channel.id);
   const nextFav = next.favoriteIds.has(next.channel.id);
@@ -525,7 +523,7 @@ export function TVModeScreen() {
     selectedCountry, setCountry,
     selectedLanguage, setLanguage,
     uiLanguage, setUiLanguage,
-    sidebarVisible, toggleSidebar,
+    sidebarVisible, setSidebarVisible,
     viewMode, setViewMode,
     guideFilter, setGuideFilter,
   } = useFilterStore();
@@ -538,8 +536,8 @@ export function TVModeScreen() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const { height: windowHeight } = useWindowDimensions();
 
-  // Focus zones for D-pad: toolbar (mode+settings icons) > filters (popular/fav/all) > channels > star > controls
-  const [focusZone, setFocusZone] = useState<'toolbar' | 'filters' | 'channels' | 'star' | 'controls'>('filters');
+  // Focus zones for D-pad: toolbar (mode+settings icons) > filters (popular/fav/all) > channels > player > controls
+  const [focusZone, setFocusZone] = useState<'toolbar' | 'filters' | 'channels' | 'player' | 'controls'>('filters');
   const [highlightedIdx, setHighlightedIdx] = useState(-1);
   const [controlFocusIdx, setControlFocusIdx] = useState(0);
   // toolbarFocusIdx is reused: in 'toolbar' zone it indexes mode/settings, in 'filters' zone it indexes filter pills
@@ -691,8 +689,7 @@ export function TVModeScreen() {
     { id: 'mute', action: toggleMute },
     { id: 'fav', action: () => { if (currentChannel) toggleFavorite(currentChannel); } },
     { id: 'reload', action: reload },
-    { id: 'fullscreen', action: toggleSidebar },
-  ], [channels, currentChannel, currentIdx, play, togglePlay, toggleMute, toggleFavorite, reload, toggleSidebar]);
+  ], [channels, currentChannel, currentIdx, play, togglePlay, toggleMute, toggleFavorite, reload]);
 
   // Guide filter pills
   const GUIDE_FILTERS: GuideFilter[] = ['popular', 'favorites', 'all'];
@@ -703,10 +700,9 @@ export function TVModeScreen() {
   };
   const VIEW_MODE_LABELS: Record<ViewMode, string> = {
     guide: t(uiLanguage, 'modeGuide'),
-    tv: t(uiLanguage, 'modeTV'),
     multicam: t(uiLanguage, 'modeMulticam'),
   };
-  const VIEW_MODES: ViewMode[] = ['guide', 'tv', 'multicam'];
+  const VIEW_MODES: ViewMode[] = ['guide', 'multicam'];
   // Filter bar indices: 0..2 = guide filters (Popular, Favoritos, Todos)
   const FILTER_COUNT = GUIDE_FILTERS.length;
   // Toolbar indices: 0 = mode picker, 1 = settings
@@ -733,13 +729,13 @@ export function TVModeScreen() {
   };
 
   const actionsRef = useRef({
-    channelUp, channelDown, play, togglePlay, toggleMute, toggleSidebar,
+    channelUp, channelDown, play, togglePlay, toggleMute, setSidebarVisible,
     toggleFavorite, controlActions,
     setViewMode, setGuideFilter, setMulticamFocusedSlot, setMulticamPickerOpen,
     handleChannelSelect, setMulticamSlots, setModePickerOpen, setModePickerIdx,
   });
   actionsRef.current = {
-    channelUp, channelDown, play, togglePlay, toggleMute, toggleSidebar,
+    channelUp, channelDown, play, togglePlay, toggleMute, setSidebarVisible,
     toggleFavorite, controlActions,
     setViewMode, setGuideFilter, setMulticamFocusedSlot, setMulticamPickerOpen,
     handleChannelSelect, setMulticamSlots, setModePickerOpen, setModePickerIdx,
@@ -750,7 +746,7 @@ export function TVModeScreen() {
       onDown: () => {
         const s = stateRef.current;
         if (s.settingsOpen) return;
-        if (s.modePickerOpen) return; // horizontal mode picker — no vertical nav
+        if (s.modePickerOpen) return;
         // Multicam with sidebar open — navigate sidebar
         if (s.multicamPickerOpen) {
           if (s.focusZone === 'filters') {
@@ -765,11 +761,12 @@ export function TVModeScreen() {
           if (s.multicamFocusedSlot < 2) actionsRef.current.setMulticamFocusedSlot(s.multicamFocusedSlot + 2);
           return;
         }
-        if (s.viewMode === 'tv') {
+        // Guide fullscreen — channel down
+        if (!s.sidebarVisible) {
           actionsRef.current.channelDown();
           return;
         }
-        // Guide mode
+        // Guide with sidebar
         if (s.focusZone === 'toolbar') {
           setFocusZone('filters');
           setToolbarFocusIdx(0);
@@ -780,14 +777,17 @@ export function TVModeScreen() {
           if (s.channels.length > 0) {
             setHighlightedIdx(prev => prev < 0 ? 0 : Math.min(prev + 1, s.channels.length - 1));
           }
-        } else if (s.focusZone === 'controls' || s.focusZone === 'star') {
+        } else if (s.focusZone === 'player') {
+          setFocusZone('controls');
+          setControlFocusIdx(0);
+        } else if (s.focusZone === 'controls') {
           setFocusZone('channels');
         }
       },
       onUp: () => {
         const s = stateRef.current;
         if (s.settingsOpen) return;
-        if (s.modePickerOpen) return; // horizontal mode picker — no vertical nav
+        if (s.modePickerOpen) return;
         // Multicam with sidebar open — navigate sidebar
         if (s.multicamPickerOpen) {
           if (s.focusZone === 'channels') {
@@ -804,11 +804,12 @@ export function TVModeScreen() {
           if (s.multicamFocusedSlot >= 2) actionsRef.current.setMulticamFocusedSlot(s.multicamFocusedSlot - 2);
           return;
         }
-        if (s.viewMode === 'tv') {
+        // Guide fullscreen — channel up
+        if (!s.sidebarVisible) {
           actionsRef.current.channelUp();
           return;
         }
-        // Guide mode
+        // Guide with sidebar
         if (s.focusZone === 'toolbar') {
           setSettingsOpen(true);
         } else if (s.focusZone === 'filters') {
@@ -821,19 +822,17 @@ export function TVModeScreen() {
           } else {
             setHighlightedIdx(prev => prev - 1);
           }
-        } else if (s.focusZone === 'controls' || s.focusZone === 'star') {
-          setFocusZone('channels');
+        } else if (s.focusZone === 'controls') {
+          setFocusZone('player');
         }
       },
       onRight: () => {
         const s = stateRef.current;
         if (s.settingsOpen) return;
-        // Mode picker — horizontal navigation
         if (s.modePickerOpen) {
           actionsRef.current.setModePickerIdx((prev: number) => Math.min(prev + 1, VIEW_MODES.length - 1));
           return;
         }
-        // Multicam with sidebar — navigate filters
         if (s.multicamPickerOpen) {
           if (s.focusZone === 'filters') {
             setToolbarFocusIdx(prev => Math.min(prev + 1, FILTER_COUNT - 1));
@@ -844,30 +843,25 @@ export function TVModeScreen() {
           if (s.multicamFocusedSlot % 2 === 0) actionsRef.current.setMulticamFocusedSlot(s.multicamFocusedSlot + 1);
           return;
         }
-        if (s.viewMode === 'tv') return;
-        // Guide mode
+        if (!s.sidebarVisible) return;
+        // Guide with sidebar
         if (s.focusZone === 'toolbar') {
           setToolbarFocusIdx(prev => Math.min(prev + 1, TOOLBAR_MAX));
         } else if (s.focusZone === 'filters') {
           setToolbarFocusIdx(prev => Math.min(prev + 1, FILTER_COUNT - 1));
         } else if (s.focusZone === 'channels') {
-          setFocusZone('star');
-        } else if (s.focusZone === 'star') {
-          setFocusZone('controls');
-          setControlFocusIdx(0);
+          setFocusZone('player');
         } else if (s.focusZone === 'controls') {
-          setControlFocusIdx(prev => Math.min(prev + 1, 6));
+          setControlFocusIdx(prev => Math.min(prev + 1, 5));
         }
       },
       onLeft: () => {
         const s = stateRef.current;
         if (s.settingsOpen) return;
-        // Mode picker — horizontal navigation
         if (s.modePickerOpen) {
           actionsRef.current.setModePickerIdx((prev: number) => Math.max(prev - 1, 0));
           return;
         }
-        // Multicam with sidebar — navigate filters
         if (s.multicamPickerOpen) {
           if (s.focusZone === 'filters') {
             setToolbarFocusIdx(prev => Math.max(prev - 1, 0));
@@ -878,20 +872,20 @@ export function TVModeScreen() {
           if (s.multicamFocusedSlot % 2 === 1) actionsRef.current.setMulticamFocusedSlot(s.multicamFocusedSlot - 1);
           return;
         }
-        if (s.viewMode === 'tv') return;
-        // Guide mode
+        if (!s.sidebarVisible) return;
+        // Guide with sidebar
         if (s.focusZone === 'toolbar') {
           setToolbarFocusIdx(prev => Math.max(prev - 1, 0));
         } else if (s.focusZone === 'filters') {
           setToolbarFocusIdx(prev => Math.max(prev - 1, 0));
+        } else if (s.focusZone === 'player') {
+          setFocusZone('channels');
         } else if (s.focusZone === 'controls') {
           if (s.controlFocusIdx > 0) {
             setControlFocusIdx(prev => prev - 1);
           } else {
-            setFocusZone('star');
+            setFocusZone('player');
           }
-        } else if (s.focusZone === 'star') {
-          setFocusZone('channels');
         }
       },
       onSelect: () => {
@@ -923,18 +917,20 @@ export function TVModeScreen() {
           }
           return;
         }
-        // Multicam fullscreen — Select toggles the sidebar
+        // Multicam — Select toggles the sidebar
         if (s.viewMode === 'multicam') {
-          if (s.multicamPickerOpen) {
-            a.setMulticamPickerOpen(false);
-          } else {
-            a.setMulticamPickerOpen(true);
-            setFocusZone('filters');
-            setToolbarFocusIdx(0);
-          }
+          a.setMulticamPickerOpen(true);
+          setFocusZone('filters');
+          setToolbarFocusIdx(0);
           return;
         }
-        // Toolbar: mode picker icon or settings
+        // Guide fullscreen — select returns to guide with sidebar
+        if (!s.sidebarVisible) {
+          a.setSidebarVisible(true);
+          setFocusZone('player');
+          return;
+        }
+        // Guide with sidebar
         if (s.focusZone === 'toolbar') {
           if (s.toolbarFocusIdx === MODE_PICKER_IDX) {
             a.setModePickerIdx(VIEW_MODES.indexOf(s.viewMode as ViewMode));
@@ -943,16 +939,14 @@ export function TVModeScreen() {
             setSettingsOpen(true);
           }
         } else if (s.focusZone === 'filters') {
-          // Select a guide filter
           a.setGuideFilter(GUIDE_FILTERS[s.toolbarFocusIdx]);
         } else if (s.focusZone === 'channels' && s.highlightedIdx >= 0 && s.highlightedIdx < s.channels.length) {
           if (Platform.OS === 'web') {
             a.play(s.channels[s.highlightedIdx], s.channels, s.highlightedIdx);
           }
-        } else if (s.focusZone === 'star' && s.highlightedIdx >= 0 && s.highlightedIdx < s.channels.length) {
-          if (Platform.OS === 'web') {
-            a.toggleFavorite(s.channels[s.highlightedIdx]);
-          }
+        } else if (s.focusZone === 'player') {
+          // Enter fullscreen
+          a.setSidebarVisible(false);
         } else if (s.focusZone === 'controls') {
           a.controlActions[s.controlFocusIdx]?.action();
         }
@@ -962,7 +956,13 @@ export function TVModeScreen() {
         if (s.modePickerOpen) { actionsRef.current.setModePickerOpen(false); return; }
         if (s.multicamPickerOpen) { actionsRef.current.setMulticamPickerOpen(false); return; }
         if (s.settingsOpen) return;
-        if (s.viewMode === 'multicam' || s.viewMode === 'tv') {
+        // Return from fullscreen to guide
+        if (!s.sidebarVisible) {
+          actionsRef.current.setSidebarVisible(true);
+          setFocusZone('player');
+          return;
+        }
+        if (s.viewMode === 'multicam') {
           actionsRef.current.setViewMode('guide');
           setFocusZone('filters');
           setToolbarFocusIdx(0);
@@ -972,8 +972,14 @@ export function TVModeScreen() {
         const s = stateRef.current;
         if (s.modePickerOpen) { actionsRef.current.setModePickerOpen(false); return true; }
         if (s.multicamPickerOpen) { actionsRef.current.setMulticamPickerOpen(false); return true; }
-        if (s.settingsOpen) return true; // modal handles its own back
-        if (s.viewMode === 'multicam' || s.viewMode === 'tv') {
+        if (s.settingsOpen) return true;
+        // Return from fullscreen to guide
+        if (!s.sidebarVisible) {
+          actionsRef.current.setSidebarVisible(true);
+          setFocusZone('player');
+          return true;
+        }
+        if (s.viewMode === 'multicam') {
           actionsRef.current.setViewMode('guide');
           setFocusZone('filters');
           setToolbarFocusIdx(0);
@@ -1226,7 +1232,16 @@ export function TVModeScreen() {
           </>
         ) : currentChannel ? (
           <>
-            <VideoPlayer />
+            <Pressable
+              style={[styles.playerTouchArea, focusZone === 'player' && sidebarVisible && styles.playerTouchAreaFocused]}
+              onPress={() => {
+                if (Platform.OS === 'web' && sidebarVisible) {
+                  setSidebarVisible(false);
+                }
+              }}
+            >
+              <VideoPlayer />
+            </Pressable>
 
             {/* Controls bar — always visible when sidebar is open */}
             {sidebarVisible && (
@@ -1322,17 +1337,6 @@ export function TVModeScreen() {
                       <ReloadIcon size={18} color="#fff" />
                     </Pressable>
 
-                    {/* Fullscreen — idx 6 */}
-                    <Pressable
-                      onPress={toggleSidebar}
-                      style={({ pressed }) => [
-                        styles.ctrlBtn,
-                        pressed && styles.ctrlBtnPressed,
-                        focusZone === 'controls' && controlFocusIdx === 6 && styles.ctrlBtnFocused,
-                      ]}
-                    >
-                      <FullscreenIcon size={20} color="#fff" />
-                    </Pressable>
                   </View>
                 </View>
               </View>
@@ -1369,7 +1373,7 @@ export function TVModeScreen() {
               const isFocused = modePickerIdx === idx;
               const isActive = viewMode === mode;
               const iconColor = isActive ? colors.accent : isFocused ? colors.textPrimary : colors.textMuted;
-              const ModeIcon = mode === 'guide' ? GuideIcon : mode === 'tv' ? TVIcon : GridIcon;
+              const ModeIcon = mode === 'guide' ? GuideIcon : GridIcon;
               return (
                 <Pressable
                   key={mode}
@@ -1799,6 +1803,15 @@ const styles = StyleSheet.create({
   } as any,
   playerWithSidebar: {
     // No marginLeft needed — sidebar is in normal flow, not absolute
+  },
+  playerTouchArea: {
+    flex: 1,
+    borderWidth: 3,
+    borderColor: 'transparent',
+  },
+  playerTouchAreaFocused: {
+    borderColor: colors.focusBorder,
+    borderRadius: 4,
   },
   noChannel: {
     flex: 1,

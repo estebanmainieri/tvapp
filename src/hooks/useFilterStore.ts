@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { getSettings, updateSettings } from '../data/settings';
 import { getDefaultLangForCountry } from '../i18n/translations';
 
-export type ViewMode = 'guide' | 'tv' | 'multicam';
+export type ViewMode = 'guide' | 'multicam';
 export type GuideFilter = 'popular' | 'favorites' | 'all';
 
 interface FilterState {
@@ -80,7 +80,7 @@ export const useFilterStore = create<FilterStore>((set, get) => ({
         const country = settings.preferredCountry || detectedCountry || 'US';
         const viewMode = (settings.viewMode as ViewMode) ?? 'guide';
         // Migrate old viewModes to new ones
-        const validModes: ViewMode[] = ['guide', 'tv', 'multicam'];
+        const validModes: ViewMode[] = ['guide', 'multicam'];
         const finalViewMode = validModes.includes(viewMode) ? viewMode : 'guide';
         const guideFilter = (settings.guideFilter as GuideFilter) ?? 'popular';
         set({
