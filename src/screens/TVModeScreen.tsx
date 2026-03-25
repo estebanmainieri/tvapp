@@ -170,7 +170,11 @@ const ChannelItemConnected = memo(function ChannelItemConnected({
   const isFav = favoriteIds.has(channel.id);
   const number = channelNumberMap.get(channel.id) ?? index + 1;
 
-  const onPress = useCallback(() => handlersRef.current.handleChannelSelect(channel, index), [channel, index, handlersRef]);
+  const onPress = useCallback(() => {
+    // On Android TV, selection is handled by useTVEventHandler's onSelect to avoid dual-event issues
+    if (Platform.OS !== 'web') return;
+    handlersRef.current.handleChannelSelect(channel, index);
+  }, [channel, index, handlersRef]);
   const onStarPress = useCallback(() => handlersRef.current.toggleFavorite(channel), [channel, handlersRef]);
 
   return (
@@ -811,7 +815,7 @@ export function TVModeScreen() {
         }
         // Guide with sidebar
         if (s.focusZone === 'toolbar') {
-          setSettingsOpen(true);
+          // Stay — settings only opens via SELECT on gear icon
         } else if (s.focusZone === 'filters') {
           setFocusZone('toolbar');
           setToolbarFocusIdx(0);
@@ -877,7 +881,13 @@ export function TVModeScreen() {
         if (s.focusZone === 'toolbar') {
           setToolbarFocusIdx(prev => Math.max(prev - 1, 0));
         } else if (s.focusZone === 'filters') {
-          setToolbarFocusIdx(prev => Math.max(prev - 1, 0));
+          // Jump to toolbar from filters
+          setFocusZone('toolbar');
+          setToolbarFocusIdx(0);
+        } else if (s.focusZone === 'channels') {
+          // Jump to toolbar from anywhere in the list
+          setFocusZone('toolbar');
+          setToolbarFocusIdx(0);
         } else if (s.focusZone === 'player') {
           setFocusZone('channels');
         } else if (s.focusZone === 'controls') {
@@ -941,9 +951,7 @@ export function TVModeScreen() {
         } else if (s.focusZone === 'filters') {
           a.setGuideFilter(GUIDE_FILTERS[s.toolbarFocusIdx]);
         } else if (s.focusZone === 'channels' && s.highlightedIdx >= 0 && s.highlightedIdx < s.channels.length) {
-          if (Platform.OS === 'web') {
-            a.play(s.channels[s.highlightedIdx], s.channels, s.highlightedIdx);
-          }
+          a.handleChannelSelect(s.channels[s.highlightedIdx], s.highlightedIdx);
         } else if (s.focusZone === 'player') {
           // Enter fullscreen
           a.setSidebarVisible(false);
@@ -994,23 +1002,18 @@ export function TVModeScreen() {
 
   useTVRemote(remoteHandlers);
 
-  // Scroll highlighted channel into view
+  // Scroll highlighted channel into view (web FlatList only — Android TV uses native focus scroll)
   useEffect(() => {
-    if (highlightedIdx >= 0 && channels.length > 0) {
+    if (Platform.OS !== 'web') return;
+    if (highlightedIdx >= 0 && channels.length > 0 && flatListRef.current) {
       const idx = Math.min(highlightedIdx, channels.length - 1);
-      // Try FlatList first, fallback to ScrollView
-      if (flatListRef.current) {
-        flatListRef.current.scrollToIndex({
-          index: idx,
-          animated: true,
-          viewPosition: 0.3,
-        });
-      } else if (scrollViewRef.current) {
-        const offset = Math.max(0, idx * ITEM_HEIGHT - windowHeight * 0.3);
-        scrollViewRef.current.scrollTo({ y: offset, animated: true });
-      }
+      flatListRef.current.scrollToIndex({
+        index: idx,
+        animated: true,
+        viewPosition: 0.3,
+      });
     }
-  }, [highlightedIdx, channels.length, windowHeight]);
+  }, [highlightedIdx, channels.length]);
 
   // OSD channel indicator for fullscreen zapping
   const showOsd = useCallback((text: string) => {
@@ -1952,15 +1955,20 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.background,
     zIndex: 100,
+    justifyContent: 'center',
+    alignItems: 'center',
   } as any,
   modalContent: {
     backgroundColor: colors.surface,
-    width: 340,
-    height: '100%',
-    borderRightWidth: 1,
-    borderRightColor: colors.surfaceHighlight,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '90%',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.surfaceHighlight,
+    overflow: 'hidden',
   } as any,
   modalHeader: {
     flexDirection: 'row',
