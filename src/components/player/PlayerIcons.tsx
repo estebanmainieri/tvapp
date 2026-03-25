@@ -126,10 +126,34 @@ export const GlobeIcon = memo(function GlobeIcon({ size = 20, color = '#fff', la
   );
 });
 
-// Layout/mode icon — three horizontal bars representing different view modes
+// Layout/mode icon — three horizontal bars
 export const LayoutIcon = memo(function LayoutIcon({ size = 20, color = '#fff' }: IconProps) {
   const layoutPath = 'M3,5h18v2H3V5z M3,11h18v2H3V11z M3,17h18v2H3V17z';
   if (Platform.OS === 'web') return <WebSvgIcon size={size} color={color} path={`<path d="${layoutPath}"/>`} />;
   if (!Svg) return <View style={{ width: size, height: size }} />;
   return <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}><Path d={layoutPath} /></Svg>;
+});
+
+// Guide icon — list with sidebar (channel guide)
+export const GuideIcon = memo(function GuideIcon({ size = 20, color = '#fff' }: IconProps) {
+  const p = 'M3,3h8v18H3V3z M13,3h8v5H13V3z M13,10h8v5H13V10z M13,17h8v4H13V17z';
+  if (Platform.OS === 'web') return <WebSvgIcon size={size} color={color} path={`<path d="${p}"/>`} />;
+  if (!Svg) return <View style={{ width: size, height: size }} />;
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}><Path d={p} /></Svg>;
+});
+
+// TV icon — screen/monitor
+export const TVIcon = memo(function TVIcon({ size = 20, color = '#fff' }: IconProps) {
+  const p = 'M21,3H3C1.9,3,1,3.9,1,5v12c0,1.1,0.9,2,2,2h7v2H8v2h8v-2h-2v-2h7c1.1,0,2-0.9,2-2V5C23,3.9,22.1,3,21,3z M21,17H3V5h18V17z';
+  if (Platform.OS === 'web') return <WebSvgIcon size={size} color={color} path={`<path d="${p}"/>`} />;
+  if (!Svg) return <View style={{ width: size, height: size }} />;
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}><Path d={p} /></Svg>;
+});
+
+// Multi/grid icon — 2x2 grid
+export const GridIcon = memo(function GridIcon({ size = 20, color = '#fff' }: IconProps) {
+  const p = 'M3,3h8v8H3V3z M13,3h8v8H13V3z M3,13h8v8H3V13z M13,13h8v8H13V13z';
+  if (Platform.OS === 'web') return <WebSvgIcon size={size} color={color} path={`<path d="${p}"/>`} />;
+  if (!Svg) return <View style={{ width: size, height: size }} />;
+  return <Svg width={size} height={size} viewBox="0 0 24 24" fill={color}><Path d={p} /></Svg>;
 });
